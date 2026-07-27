@@ -1,0 +1,74 @@
+# Broad source universe for investment research intake.
+# AI infrastructure is a pilot topic, not the system boundary.
+version: 1
+selection_principle: "Daily output should choose the most decision-useful changes across the full market/source universe, not repeat a fixed theme."
+lanes:
+  macro_regime:
+    purpose: "Rates, dollar, credit, liquidity, volatility and major index context."
+    examples:
+      - US Treasury yields / FRED / OpenBB macro
+      - USD, oil, gold, credit spreads, VIX
+      - S&P 500 / Nasdaq / Russell / CSI 300 / Hang Seng context
+    promote_when:
+      - "Market-wide risk pricing changed enough to affect multiple sectors."
+      - "Macro move explains or contradicts equity-sector signals."
+  company_events:
+    purpose: "Earnings, guidance, filings, management commentary, insider/ownership and corporate actions."
+    examples:
+      - SEC filings and earnings calls
+      - CN/HK announcements and financial reports
+      - guidance, backlog, capex, margin, cash-flow, buyback/dividend updates
+    promote_when:
+      - "New source changes revenue, margin, balance-sheet, valuation or risk read."
+      - "Company event explains a price or sector move."
+  sector_theme_discovery:
+    purpose: "Find themes before they become obvious, but keep them source-backed."
+    examples:
+      - AI infrastructure / semiconductors / power / thermal
+      - energy, grid, commodities, healthcare, consumer, financials, industrials
+      - China policy, domestic demand, export chain, platform economy, EV/battery chain
+    promote_when:
+      - "Several independent sources point to the same bottleneck or demand shift."
+      - "Theme can be mapped to listed companies and measurable operating variables."
+  market_action:
+    purpose: "Price, volume, factor, breadth, flows and relative-strength changes."
+    examples:
+      - 5D/20D/60D relative moves
+      - sector ETF leadership / drawdown / volatility
+      - unusual volume, breadth, crowding and style rotation
+    promote_when:
+      - "Market action contradicts or confirms the fundamental story."
+      - "A move is large enough to deserve source lookup, not just price commentary."
+  expert_and_media_signals:
+    purpose: "Public expert posts, newsletters, sell-side/media summaries and counter-arguments as question fuel."
+    examples:
+      - X expert threads and industry specialists
+      - SemiAnalysis / specialist newsletters / public research blogs
+      - Bloomberg / Reuters / WSJ / Caixin / 36Kr / company interviews
+    promote_when:
+      - "The signal points to a primary source, a falsifiable variable or a useful counter-thesis."
+      - "The signal is not hype and can be checked against filings, data or market action."
+  portfolio_watchlist:
+    purpose: "User watchlist / holdings / candidate names, kept separate from execution advice."
+    examples:
+      - personal watchlist
+      - high-conviction candidates
+      - current exposure and overlapping risk themes
+    promote_when:
+      - "A new signal affects existing exposure, concentration or a candidate under review."
+      - "The output can suggest research priority without saying buy/sell/hold."
+daily_selection:
+  max_items: 5
+  rank_by:
+    - decision_usefulness
+    - evidence_change
+    - novelty
+    - magnitude
+    - source_quality
+    - portfolio_relevance
+  exclude:
+    - pure_hype
+    - uncheckable_opinion
+    - repeated_theme_without_new_evidence
+    - trade_instruction
+output_rule: "Daily brief should cover the top source-backed changes across lanes; detailed pack expands only the items with enough evidence or enough unresolved risk to deserve time."

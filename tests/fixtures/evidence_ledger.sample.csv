@@ -1,0 +1,9 @@
+symbol,category,claim,value,source,as_of_date,freshness,status,url,note
+DEMO_US,macro_sector_context,SPY context: synthetic broad-market proxy,收盘 100；60 日变化 4.2%,synthetic fixture,2026-06-30,fresh,ok,,Synthetic data for tests only.
+DEMO_US,macro_sector_context,TLT context: synthetic duration proxy,收盘 100；60 日变化 -1.1%,synthetic fixture,2026-06-30,fresh,ok,,Synthetic data for tests only.
+DEMO_US,macro_sector_context,XLK context: synthetic technology proxy,收盘 100；60 日变化 6.3%,synthetic fixture,2026-06-30,fresh,ok,,Synthetic data for tests only.
+NVDA,fundamentals,Latest annual revenue,1000 亿,synthetic fixture,2026-06-30,annual,ok,,Invented value for tests only.
+NVDA,profitability,Gross Margin,60%,synthetic fixture,2026-06-30,annual,ok,,Invented value for tests only.
+theme:datacenter_power,theme_evidence,Power demand evidence,两个独立示例来源指向同一个可衡量的容量约束。,synthetic fixture,2026-06-30,fresh,ok,,Synthetic data for tests only.
+510300,china_price,沪深 300 ETF 示例收盘价,4.20,synthetic fixture,2026-06-30,fresh,ok,,Synthetic data for tests only.
+000300,china_index,沪深 300 指数示例收盘价,4200,synthetic fixture,2026-06-30,fresh,ok,,Synthetic data for tests only.

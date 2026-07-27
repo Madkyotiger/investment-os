@@ -1,0 +1,37 @@
+version: 1
+profiles:
+  founder_operator:
+    label: "C-suite personal investor"
+    role: "个人投资者；C 超身份仅作为认知背景，不代表公司决策职责"
+    decision_horizon: "days to quarters"
+    business_exposure:
+      - personal investment research
+      - business experience as an analytical lens, not action authority
+    asset_exposure:
+      - US large-cap technology
+      - China broad-market context
+    current_projects:
+      - investment research system
+    trusted_source_preference:
+      - primary filings
+      - company investor relations
+      - official macro data
+      - major financial media as leads
+    brief_style: "natural professional Chinese financial analysis for personal investing"
+    avoid:
+      - trade instructions
+      - generic market education
+      - unverified social hype
+      - system paths and process jargon
+    relevance_keywords:
+      - AI
+      - capex
+      - data center
+      - margin
+      - cash flow
+      - Fed
+      - rates
+      - China
+      - semiconductor
+      - power
+      - earnings

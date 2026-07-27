@@ -1,0 +1,29 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+
+# Local output and private configuration
+*-output/
+demo-output/
+live-output/
+reports/
+.cache/
+.env
+.env.*
+!.env.example
+*.local.*
+*.private.*
+configs/holdings*.csv
+configs/watchlist.local.yaml
+
+# Editors and OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
