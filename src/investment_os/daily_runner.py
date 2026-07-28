@@ -197,7 +197,7 @@ def run_daily(config_path: Path, out_dir: Path, *, strict: bool = False) -> Dail
             "mode": "dry-run",
             "live_delivery_enabled": False,
             "artifact": str(brief_path),
-            "message": "No Feishu, webhook, email, or scheduler action was performed.",
+            "message": "No messaging, webhook, email, or scheduler action was performed.",
         },
     )
 

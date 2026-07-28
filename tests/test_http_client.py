@@ -88,11 +88,11 @@ def test_http_client_rejects_wrong_content_type_malformed_json_and_oversize():
 
 def test_http_client_uses_sec_identity_without_exposing_it(monkeypatch):
     captured = {}
-    monkeypatch.setenv("SEC_EDGAR_IDENTITY", "researcher@example.test")
+    monkeypatch.setenv("SEC_EDGAR_IDENTITY", "researcher@example.com")
 
     def opener(request, _timeout):
         captured.update(dict(request.header_items()))
         return FakeResponse(json.dumps({"ok": True}).encode())
 
     HttpClient(opener=opener).get_json("https://data.sec.gov/submissions/example.json")
-    assert captured["User-agent"] == "researcher@example.test"
+    assert captured["User-agent"] == "researcher@example.com"

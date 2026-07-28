@@ -27,7 +27,7 @@ def test_source_health_tracks_success_failure_and_last_known_good(tmp_path):
 def test_source_health_never_records_secret_values(tmp_path):
     store = SourceHealthStore(tmp_path / "source-health.json")
     store.record_failure(
-        "feishu",
+        "messaging_gateway",
         {"code": "auth", "message": "request failed", "source_url": "https://example.test/path"},
         NOW,
     )
