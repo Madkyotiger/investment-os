@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from investment_os.source_check_queue import (
+    build_official_macro_source_targets,
     build_source_check_tasks,
     render_source_check_queue,
     run,
@@ -124,3 +125,12 @@ def test_source_check_queue_run_writes_csv_markdown_json_and_quality_scan(tmp_pa
     assert rows[0]["task_id"].startswith("SCQ-20260705-")
     assert rows[0]["queue_status"] == "open"
     assert all(count == 0 for count in quality_scan.values())
+
+
+def test_fed_and_treasury_targets_stay_in_queue_until_evidence_is_fetched():
+    tasks = build_official_macro_source_targets(datetime(2026, 7, 8, tzinfo=timezone.utc))
+
+    assert {task.symbol for task in tasks} == {"FOMC", "UST_YIELD_CURVE"}
+    assert all(task.queue_status == "open" for task in tasks)
+    assert all(task.source_status == "source_target_only" for task in tasks)
+    assert all(task.current_evidence == "" for task in tasks)

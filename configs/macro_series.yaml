@@ -1,0 +1,48 @@
+version: 1
+source: FRED
+series:
+  DGS2:
+    label: US Treasury 2-Year Constant Maturity Rate
+    cadence: business_daily
+    stale_after_days: 5
+    unit: percent
+  DGS10:
+    label: US Treasury 10-Year Constant Maturity Rate
+    cadence: business_daily
+    stale_after_days: 5
+    unit: percent
+  DGS30:
+    label: US Treasury 30-Year Constant Maturity Rate
+    cadence: business_daily
+    stale_after_days: 5
+    unit: percent
+  FEDFUNDS:
+    label: Federal Funds Effective Rate
+    cadence: monthly
+    stale_after_days: 45
+    unit: percent
+  CPIAUCSL:
+    label: Consumer Price Index for All Urban Consumers
+    cadence: monthly
+    stale_after_days: 45
+    unit: index
+  CPILFESL:
+    label: Consumer Price Index Less Food and Energy
+    cadence: monthly
+    stale_after_days: 45
+    unit: index
+  UNRATE:
+    label: Unemployment Rate
+    cadence: monthly
+    stale_after_days: 45
+    unit: percent
+  PAYEMS:
+    label: All Employees Total Nonfarm Payrolls
+    cadence: monthly
+    stale_after_days: 45
+    unit: thousands
+  PCEPI:
+    label: Personal Consumption Expenditures Price Index
+    cadence: monthly
+    stale_after_days: 50
+    unit: index
