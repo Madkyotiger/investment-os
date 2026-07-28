@@ -3,9 +3,6 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import os
-import urllib.error
-import urllib.request
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,6 +11,11 @@ from typing import Any
 import yaml
 
 from .evidence_contract import infer_body_read_status, normalize_evidence_status
+from .http_client import HttpClient, HttpRequestError
+
+
+_HTTP_CLIENT = HttpClient()
+_LAST_SOURCE_ERRORS: list[dict[str, object]] = []
 
 
 @dataclass
@@ -73,25 +75,20 @@ def _watchlist_tags(symbol: str, groups: dict[str, list[str]]) -> list[str]:
     return [group for group, symbols in groups.items() if symbol in symbols]
 
 
-def _request_headers(url: str) -> dict[str, str]:
-    if "sec.gov" in url:
-        identity = os.getenv("SEC_EDGAR_IDENTITY", "").strip()
-        if not identity:
-            raise RuntimeError("SEC_EDGAR_IDENTITY is required for SEC requests")
-        return {"User-Agent": identity}
-    return {"User-Agent": "InvestmentOS/0.1 (+https://github.com/Madkyotiger/investment-os)"}
+def _record_source_error(error: HttpRequestError) -> None:
+    _LAST_SOURCE_ERRORS.append(error.to_dict())
+
+
+def get_last_source_errors() -> list[dict[str, object]]:
+    return [dict(error) for error in _LAST_SOURCE_ERRORS]
 
 
 def _http_json(url: str, timeout: int = 10) -> dict | list:
-    request = urllib.request.Request(url, headers=_request_headers(url))
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        return json.loads(response.read().decode("utf-8"))
+    return _HTTP_CLIENT.get_json(url)
 
 
 def _http_text(url: str, timeout: int = 10) -> str:
-    request = urllib.request.Request(url, headers=_request_headers(url))
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        return response.read().decode("utf-8")
+    return _HTTP_CLIENT.get_text(url)
 
 
 def _safe_float(value: Any) -> float | None:
@@ -108,7 +105,8 @@ def _safe_sec_recent() -> dict:
         data = _http_json("https://www.sec.gov/files/company_tickers.json")
         if isinstance(data, dict):
             return data
-    except Exception:
+    except HttpRequestError as error:
+        _record_source_error(error)
         return {}
     return {}
 
@@ -157,7 +155,8 @@ def _latest_sec_filing_for_cik(cik: str) -> dict[str, str] | None:
     padded = str(cik).zfill(10)
     try:
         data = _http_json(f"https://data.sec.gov/submissions/CIK{padded}.json")
-    except Exception:
+    except HttpRequestError as error:
+        _record_source_error(error)
         return None
     recent = data.get("filings", {}).get("recent", {}) if isinstance(data, dict) else {}
     forms = recent.get("form", [])
@@ -219,7 +218,8 @@ def _fred_latest(series_id: str) -> tuple[str, float] | None:
     url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
     try:
         text = _http_text(url, timeout=12)
-    except Exception:
+    except HttpRequestError as error:
+        _record_source_error(error)
         return None
     rows = list(csv.DictReader(text.splitlines()))
     for row in reversed(rows):
@@ -310,7 +310,8 @@ def _download_stooq_snapshot(symbols: list[str]) -> dict[str, dict[str, float | 
         try:
             text = _http_text(url, timeout=10)
             rows = list(csv.DictReader(text.splitlines()))
-        except Exception:
+        except HttpRequestError as error:
+            _record_source_error(error)
             continue
         clean = [row for row in rows if _safe_float(row.get("Close")) is not None]
         if len(clean) < 5:
@@ -484,6 +485,7 @@ def collect_watchlist_relevance_candidates(watchlist_groups: dict[str, list[str]
 
 def collect_hard_source_candidates(watchlist_path: Path, generated_at: datetime | None = None) -> list[HardSourceCandidate]:
     generated_at = generated_at or datetime.now(timezone.utc)
+    _LAST_SOURCE_ERRORS.clear()
     groups = _load_watchlist(watchlist_path)
     candidates: list[HardSourceCandidate] = []
     candidates.extend(collect_sec_watchlist_candidates(groups, generated_at))
