@@ -1,5 +1,7 @@
 # Investment OS
 
+[中文说明](README.zh-CN.md)
+
 Investment OS turns market data and source material into research questions, evidence gaps, counter-explanations, and a short reader brief. It is built for agents and humans who want better research discipline without outsourcing the investment decision.
 
 This repository is a public evaluation release. It does not recommend, size, or execute trades.
