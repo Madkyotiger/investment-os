@@ -66,6 +66,10 @@ uvx --from git+https://github.com/Madkyotiger/investment-os.git \
 
 如果 Agent 在本地仓库中工作，请遵循 [`AGENTS.md`](AGENTS.md) 和 [`docs/AGENT_INSTALL.md`](docs/AGENT_INSTALL.md)。
 
+## Agent Skill
+
+可移植 Skill 位于 [`skills/investment-research/`](skills/investment-research/)。把整个目录复制或链接到 Agent 的 Skill 搜索路径，再调用 `investment-research`。它补的是研究纪律和来源门槛，不会替你配置凭证、实时数据、定时任务、消息推送或交易执行。
+
 ## 可选实时行情检查
 
 用隔离环境运行 `market` 依赖，避免把可选包长期装进项目 `.venv`：

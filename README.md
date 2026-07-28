@@ -68,6 +68,10 @@ uvx --from git+https://github.com/Madkyotiger/investment-os.git \
 
 For a repository checkout, follow [`AGENTS.md`](AGENTS.md) and [`docs/AGENT_INSTALL.md`](docs/AGENT_INSTALL.md).
 
+## Agent skill
+
+The portable skill lives at [`skills/investment-research/`](skills/investment-research/). Copy or link the complete directory into your agent's skill search path, then invoke `investment-research`. The skill adds research discipline and source gates; it does not add credentials, live-source access, scheduling, messaging, or trade execution.
+
 ## Optional live market check
 
 Run the market extra in an isolated environment so the project `.venv` stays small:
