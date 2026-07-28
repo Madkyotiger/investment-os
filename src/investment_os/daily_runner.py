@@ -8,6 +8,7 @@ import shutil
 import tempfile
 from dataclasses import asdict, dataclass, fields
 from datetime import datetime, timezone
+from importlib.resources import files
 from pathlib import Path
 from typing import Mapping, Sequence
 
@@ -23,7 +24,7 @@ from .source_universe_intake import SourceCandidate, write_candidates
 from .topic_state import update_topic_state
 
 
-OFFLINE_FIXTURE = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "daily_brief_sources.json"
+OFFLINE_FIXTURE = files("investment_os").joinpath("data", "daily_brief_sources.json")
 
 
 class DailyRunError(RuntimeError):

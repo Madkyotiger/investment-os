@@ -30,6 +30,14 @@ def _run(tmp_path: Path, name: str, **kwargs):
     )
 
 
+def test_offline_fixture_is_bundled_as_package_data():
+    fixture_path = Path(str(daily_runner.OFFLINE_FIXTURE))
+
+    assert fixture_path.is_file()
+    assert fixture_path.parent.name == "data"
+    assert fixture_path.parent.parent.name == "investment_os"
+
+
 def test_offline_daily_run_is_deterministic_and_second_run_is_quiet(tmp_path: Path):
     first = _run(tmp_path, "run-1")
     second = _run(tmp_path, "run-2")
