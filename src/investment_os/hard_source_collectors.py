@@ -69,6 +69,18 @@ def _load_watchlist(path: Path) -> dict[str, list[str]]:
     return {group: [str(symbol) for symbol in data.get("symbols", [])] for group, data in groups.items()}
 
 
+def _load_symbol_metadata(path: Path) -> dict[str, dict[str, object]]:
+    raw = yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else {}
+    metadata = raw.get("symbol_metadata", {}) if raw else {}
+    if not isinstance(metadata, dict):
+        return {}
+    return {
+        str(symbol).upper(): dict(values)
+        for symbol, values in metadata.items()
+        if isinstance(values, dict)
+    }
+
+
 def _flatten_watchlist(groups: dict[str, list[str]]) -> set[str]:
     symbols: set[str] = set()
     for values in groups.values():
@@ -180,14 +192,26 @@ def _latest_sec_filing_for_cik(cik: str) -> dict[str, str] | None:
     return None
 
 
-def collect_sec_recent_filing_candidates(watchlist_groups: dict[str, list[str]], generated_at: datetime, max_symbols: int = 8) -> list[HardSourceCandidate]:
-    symbols = sorted(
-        {
+def collect_sec_recent_filing_candidates(
+    watchlist_groups: dict[str, list[str]],
+    generated_at: datetime,
+    max_symbols: int = 8,
+    symbol_metadata: dict[str, dict[str, object]] | None = None,
+) -> list[HardSourceCandidate]:
+    if symbol_metadata:
+        symbols = sorted(
             symbol.upper()
-            for symbol in _flatten_watchlist(watchlist_groups)
-            if symbol and symbol.replace("-", "").isalpha()
-        }
-    )
+            for symbol, metadata in symbol_metadata.items()
+            if str(metadata.get("market", "")).upper() == "US" and bool(metadata.get("sec_filings", False))
+        )
+    else:
+        symbols = sorted(
+            {
+                symbol.upper()
+                for symbol in _flatten_watchlist(watchlist_groups)
+                if symbol and symbol.replace("-", "").isalpha()
+            }
+        )
     sec_map = _safe_sec_recent()
     cik_by_ticker = {str(row.get("ticker", "")).upper(): str(row.get("cik_str", "")) for row in sec_map.values()}
     candidates: list[HardSourceCandidate] = []
@@ -549,9 +573,16 @@ def collect_hard_source_candidates(watchlist_path: Path, generated_at: datetime 
     generated_at = generated_at or datetime.now(timezone.utc)
     _LAST_SOURCE_ERRORS.clear()
     groups = _load_watchlist(watchlist_path)
+    symbol_metadata = _load_symbol_metadata(watchlist_path)
     candidates: list[HardSourceCandidate] = []
     candidates.extend(collect_sec_watchlist_candidates(groups, generated_at))
-    candidates.extend(collect_sec_recent_filing_candidates(groups, generated_at))
+    candidates.extend(
+        collect_sec_recent_filing_candidates(
+            groups,
+            generated_at,
+            symbol_metadata=symbol_metadata,
+        )
+    )
     candidates.extend(collect_macro_hard_candidates(generated_at))
     candidates.extend(collect_fred_yield_candidates(generated_at))
     candidates.extend(collect_market_move_candidates(groups, generated_at))

@@ -13,3 +13,14 @@ groups:
     purpose: "China broad-market context"
     source: china
     symbols: [510300, "000300"]
+symbol_metadata:
+  AAPL: {market: US, asset_type: equity, sec_filings: true}
+  MSFT: {market: US, asset_type: equity, sec_filings: true}
+  NVDA: {market: US, asset_type: equity, sec_filings: true}
+  SPY: {market: US, asset_type: etf, sec_filings: false}
+  QQQ: {market: US, asset_type: etf, sec_filings: false}
+  IWM: {market: US, asset_type: etf, sec_filings: false}
+  TLT: {market: US, asset_type: etf, sec_filings: false}
+  UUP: {market: US, asset_type: etf, sec_filings: false}
+  510300: {market: CN, asset_type: etf, sec_filings: false}
+  "000300": {market: CN, asset_type: index, sec_filings: false}

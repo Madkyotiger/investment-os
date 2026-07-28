@@ -111,7 +111,12 @@ def test_sec_symbols_do_not_depend_on_hardcoded_group_names(monkeypatch):
     )
 
     candidates = collect_sec_recent_filing_candidates(
-        {"custom_research": ["ACME"]}, datetime(2026, 7, 8, tzinfo=timezone.utc)
+        {"custom_research": ["ACME", "HKCO"]},
+        datetime(2026, 7, 8, tzinfo=timezone.utc),
+        symbol_metadata={
+            "ACME": {"market": "US", "sec_filings": True},
+            "HKCO": {"market": "HK", "sec_filings": False},
+        },
     )
 
     assert {candidate.tickers for candidate in candidates} == {"ACME"}
