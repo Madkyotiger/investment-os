@@ -7,7 +7,7 @@ This route keeps the test reversible. It creates one checkout, one project-local
 ```bash
 git clone https://github.com/Madkyotiger/investment-os.git
 cd investment-os
-uv sync --extra dev
+uv sync --frozen --extra dev
 ```
 
 `uv` stores the environment under the project. Do not install packages into the system Python.
@@ -32,16 +32,25 @@ The offline demo uses deterministic synthetic prices and synthetic source candid
 
 ## Optional live market test
 
+Use an isolated environment so optional market packages do not remain in the project `.venv`:
+
 ```bash
-uv sync --extra market
 cp configs/watchlist.sample.yaml configs/watchlist.local.yaml
-uv run investment-os run \
+uv run --frozen --isolated --link-mode copy --extra market \
+  investment-os run \
   --config configs/watchlist.local.yaml \
   --out live-output \
   --strict
 ```
 
 Exit code `2` means the command produced no usable live rows. Check network access and provider behavior; do not reinterpret a degraded run as success.
+
+To check optional package profiles without calling providers:
+
+```bash
+uv run --no-project python scripts/verify_dependency_profiles.py market
+uv run --no-project python scripts/verify_dependency_profiles.py global-research china
+```
 
 SEC requests need `SEC_EDGAR_IDENTITY` in the environment. Tushare needs `TUSHARE_TOKEN`. Never put either value in the repository.
 

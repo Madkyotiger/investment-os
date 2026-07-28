@@ -22,7 +22,7 @@ You need Python 3.11 or 3.12 and [uv](https://docs.astral.sh/uv/).
 ```bash
 git clone https://github.com/Madkyotiger/investment-os.git
 cd investment-os
-uv sync --extra dev
+uv sync --frozen --extra dev
 uv run investment-os doctor
 uv run investment-os demo --out demo-output
 uv run pytest -q
@@ -54,18 +54,18 @@ For a repository checkout, follow [`AGENTS.md`](AGENTS.md) and [`docs/AGENT_INST
 
 ## Optional live market check
 
-Install the market extra, copy the sample watchlist, then use strict mode:
+Run the market extra in an isolated environment so the project `.venv` stays small:
 
 ```bash
-uv sync --extra dev --extra market
 cp configs/watchlist.sample.yaml configs/watchlist.local.yaml
-uv run investment-os run \
+uv run --frozen --isolated --link-mode copy --extra market \
+  investment-os run \
   --config configs/watchlist.local.yaml \
   --out live-output \
   --strict
 ```
 
-Strict mode exits non-zero when no symbol has usable fresh-enough data. A generated file is not treated as proof that collection succeeded.
+Strict mode exits non-zero when no symbol has usable fresh-enough data. A generated file is not proof that collection succeeded. The bundled watchlist leaves its `source: china` rows as explicit gaps during this market-only check; it does not send those symbols to Yahoo.
 
 Some SEC paths require a valid identity string:
 
@@ -73,11 +73,21 @@ Some SEC paths require a valid identity string:
 export SEC_EDGAR_IDENTITY="Your Name your-email@example.com"
 ```
 
-China connectors are optional:
+## Optional dependency profiles
+
+The public lockfile includes separate profiles for live market data, global research providers, and China data. Check them without adding their packages to the project environment:
 
 ```bash
-uv sync --extra china
-export TUSHARE_TOKEN="..."  # only if you use Tushare
+uv run --no-project python scripts/verify_dependency_profiles.py market
+uv run --no-project python scripts/verify_dependency_profiles.py global-research china
+```
+
+These checks install from the lockfile and import the required packages. They do not call live providers. The first run can take longer while `uv` fills its cache.
+
+Tushare requires a token when you use its live connector:
+
+```bash
+export TUSHARE_TOKEN="..."
 ```
 
 Never commit credentials or real holdings. Keep them in environment variables and ignored local files.

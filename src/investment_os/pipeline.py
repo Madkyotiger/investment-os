@@ -85,7 +85,24 @@ def safe_float(value: Any) -> float | None:
 
 def load_watchlist(path: Path) -> tuple[dict[str, Any], list[SymbolConfig]]:
     config = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    symbols = [SymbolConfig(**item) for item in config.get("symbols", [])]
+    symbols: list[SymbolConfig] = []
+
+    for item in config.get("symbols", []):
+        symbols.append(SymbolConfig(**item) if isinstance(item, dict) else SymbolConfig(symbol=str(item)))
+
+    if not symbols:
+        seen: set[str] = set()
+        for group_name, group in config.get("groups", {}).items():
+            purpose = str(group.get("purpose", "")).strip()
+            notes = f"{group_name}: {purpose}" if purpose else str(group_name)
+            source = str(group.get("source", "yahoo"))
+            for item in group.get("symbols", []):
+                symbol = str(item)
+                if symbol in seen:
+                    continue
+                seen.add(symbol)
+                symbols.append(SymbolConfig(symbol=symbol, source=source, notes=notes))
+
     if not symbols:
         raise ValueError(f"No symbols found in {path}")
     return config, symbols

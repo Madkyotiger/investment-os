@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-from investment_os.pipeline import FORBIDDEN_DECISION_WORDS, SymbolConfig, analyze_history, render_report
+from investment_os.pipeline import FORBIDDEN_DECISION_WORDS, SymbolConfig, analyze_history, load_watchlist, render_report
 
 
 def fake_history(values: list[float]) -> pd.DataFrame:
@@ -43,3 +44,37 @@ def test_render_report_contains_disclaimer_and_no_trade_phrases():
     forbidden_phrases = ["建议买入", "建议卖出", "建议持有", "建议加仓", "建议减仓"]
     for phrase in forbidden_phrases:
         assert phrase not in report
+
+
+def test_load_watchlist_accepts_grouped_public_sample():
+    path = Path(__file__).resolve().parents[1] / "configs" / "watchlist.sample.yaml"
+
+    _, symbols = load_watchlist(path)
+
+    assert [item.symbol for item in symbols] == [
+        "AAPL",
+        "MSFT",
+        "NVDA",
+        "SPY",
+        "QQQ",
+        "IWM",
+        "TLT",
+        "UUP",
+        "510300",
+        "000300",
+    ]
+    assert symbols[0].notes.startswith("core_us:")
+    assert symbols[0].source == "yahoo"
+    assert symbols[-1].source == "china"
+
+
+def test_load_watchlist_preserves_detailed_symbol_schema(tmp_path):
+    path = tmp_path / "watchlist.yaml"
+    path.write_text(
+        "symbols:\n  - symbol: AAPL\n    name: Apple\n    market: US\n    asset_class: equity\n",
+        encoding="utf-8",
+    )
+
+    _, symbols = load_watchlist(path)
+
+    assert symbols == [SymbolConfig(symbol="AAPL", name="Apple", market="US", asset_class="equity")]

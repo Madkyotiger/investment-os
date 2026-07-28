@@ -3,7 +3,7 @@
 Keep changes small and testable.
 
 ```bash
-uv sync --extra dev
+uv sync --frozen --extra dev
 uv run ruff check .
 uv run pytest -q
 uv run investment-os demo --out /tmp/investment-os-demo

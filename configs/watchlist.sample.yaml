@@ -3,10 +3,13 @@ principle: "Watchlist relevance is research routing only; it is not a holding or
 groups:
   core_us:
     purpose: "Large-cap company and earnings context"
+    source: yahoo
     symbols: [AAPL, MSFT, NVDA]
   market_proxies:
     purpose: "Macro and sector context"
+    source: yahoo
     symbols: [SPY, QQQ, IWM, TLT, UUP]
   china_parallel:
     purpose: "China broad-market context"
+    source: china
     symbols: [510300, "000300"]

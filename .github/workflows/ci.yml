@@ -3,6 +3,9 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 5 * * 1"
 
 permissions:
   contents: read
@@ -21,9 +24,35 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
-      - run: uv sync --extra dev
+      - run: uv sync --frozen --extra dev
       - run: uv run ruff check .
       - run: uv run pytest -q
       - run: uv run investment-os doctor
       - run: uv run investment-os demo --out ci-demo-output
       - run: uv run python scripts/public_release_guard.py
+
+  market-profile:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv run --no-project python scripts/verify_dependency_profiles.py market
+
+  optional-profiles:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [global-research, china]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv run --no-project python scripts/verify_dependency_profiles.py ${{ matrix.profile }}
