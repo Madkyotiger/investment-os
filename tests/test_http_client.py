@@ -96,3 +96,11 @@ def test_http_client_uses_sec_identity_without_exposing_it(monkeypatch):
 
     HttpClient(opener=opener).get_json("https://data.sec.gov/submissions/example.json")
     assert captured["User-agent"] == "researcher@example.com"
+
+
+def test_http_client_accepts_standard_application_csv_response():
+    response = FakeResponse(b"observation_date,DGS2\n2026-07-27,3.50\n", "application/csv")
+
+    text = HttpClient(opener=lambda _request, _timeout: response).get_text("https://example.test/series.csv")
+
+    assert text.startswith("observation_date,DGS2")

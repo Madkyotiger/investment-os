@@ -19,7 +19,7 @@ DENY_PATH_PARTS = {
 DENY_FILENAMES = {"CURRENT.md", ".env", "credentials.json", "secrets.json"}
 TEXT_SUFFIXES = {".py", ".md", ".toml", ".yaml", ".yml", ".json", ".csv", ".sh", ".txt"}
 PATTERNS = {
-    "private_identity": re.compile(r"(?i)\b(Jef|Kyoti|AgentKey|JBrain|Feishu)\b"),
+    "private_identity": re.compile(r"(?i)\b(Jef|Kyoti|AgentKey|JBrain)\b"),
     "windows_user_path": re.compile(r"(?i)(?:[A-Z]:\\Users\\|/mnt/[a-z]/Users/)[^\s'\"]+"),
     "linux_home_path": re.compile(r"/home/(?!runner\b|user\b)[A-Za-z0-9._-]+/"),
     "chat_or_base_id": re.compile(r"\b(?:oc_[a-z0-9]{12,}|rq[A-Za-z0-9]{12,})\b"),

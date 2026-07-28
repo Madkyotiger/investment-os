@@ -14,7 +14,7 @@ TRANSIENT_STATUS_CODES = frozenset({408, 425, 429, 500, 502, 503, 504})
 DEFAULT_USER_AGENT = "InvestmentOS/0.1 (+https://github.com/Madkyotiger/investment-os)"
 
 
-@dataclass(frozen=True)
+@dataclass
 class HttpRequestError(RuntimeError):
     code: str
     message: str
@@ -127,7 +127,7 @@ class HttpClient:
         url: str,
         *,
         user_agent: str | None = None,
-        expected_content_types: tuple[str, ...] = ("text/plain", "text/csv", "text/html"),
+        expected_content_types: tuple[str, ...] = ("text/plain", "text/csv", "application/csv", "text/html"),
     ) -> str:
         body = self._request(url, expected_content_types, user_agent)
         try:

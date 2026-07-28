@@ -219,7 +219,7 @@ def run_daily(
 
     out_dir.mkdir(parents=True, exist_ok=True)
     state_path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="investment-os-daily-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="investment-os-daily-", dir=state_path.parent) as temporary:
         work_dir = Path(temporary)
         temporary_state = _prepare_state_copy(state_path, work_dir)
         candidates_csv, _ = write_candidates(candidates, work_dir / "candidates")
