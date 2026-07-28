@@ -31,6 +31,8 @@ class EvidenceItem:
     body_read_status: str = "not_read"
     content_hash: str = ""
     cannot_prove: str = ""
+    source_authority: str = "unknown"
+    underlying_endpoint: str = ""
 
 
 def can_generate_business_implication(item: EvidenceItem) -> bool:

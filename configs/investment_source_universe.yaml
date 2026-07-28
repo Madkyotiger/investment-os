@@ -72,3 +72,18 @@ daily_selection:
     - repeated_theme_without_new_evidence
     - trade_instruction
 output_rule: "Daily brief should cover the top source-backed changes across lanes; detailed pack expands only the items with enough evidence or enough unresolved risk to deserve time."
+china_official_source_targets:
+  coverage_status: incomplete
+  promotion_rule: "A target is not evidence; promote only a fetched, dated document or observation."
+  authorities:
+    - PBOC
+    - NBS
+    - CNINFO
+    - SSE
+    - SZSE
+    - HKEX
+china_convenience_adapters:
+  - name: AKShare
+    authority: convenience_secondary
+  - name: Tushare
+    authority: convenience_secondary
