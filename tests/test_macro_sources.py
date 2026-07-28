@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from investment_os.hard_source_collectors import collect_fred_macro_candidates, collect_hard_source_candidates
 from investment_os.macro_sources import (
     collect_macro_observations,
     load_macro_series,
@@ -70,3 +71,52 @@ def test_macro_state_contains_no_consensus_or_surprise_claim(tmp_path):
     assert "consensus" not in text
     assert list(csv.DictReader("observation_date,UNRATE\n2026-06-01,4.1\n".splitlines()))
     assert json.loads(state.read_text(encoding="utf-8"))["UNRATE"]["observation_date"] == "2026-06-01"
+
+
+def test_daily_macro_candidates_cover_allowlist_and_hash_same_date_revisions(monkeypatch, tmp_path):
+    definitions = load_macro_series(Path("configs/macro_series.yaml"))
+    values = {series_id: 4.0 + index for index, series_id in enumerate(definitions)}
+
+    def fake_text(series_id: str) -> str:
+        value = values[series_id]
+        return f"observation_date,{series_id}\n2026-07-06,{value - 0.1}\n2026-07-07,{value}\n"
+
+    monkeypatch.setattr("investment_os.hard_source_collectors._fred_series_text", fake_text)
+    state_path = tmp_path / "macro-state.json"
+    first = collect_fred_macro_candidates(datetime(2026, 7, 8, tzinfo=timezone.utc), state_path=state_path)
+    first_by_series = {candidate.item_id.rsplit(":", 1)[-1]: candidate for candidate in first}
+
+    values["UNRATE"] += 0.2
+    second = collect_fred_macro_candidates(datetime(2026, 7, 8, tzinfo=timezone.utc), state_path=state_path)
+    second_by_series = {candidate.item_id.rsplit(":", 1)[-1]: candidate for candidate in second}
+
+    assert set(first_by_series) == set(definitions)
+    assert first_by_series["UNRATE"].content_hash != second_by_series["UNRATE"].content_hash
+    assert json.loads(second_by_series["UNRATE"].observed_value)["level"] == pytest.approx(values["UNRATE"])
+    text = " ".join(candidate.summary.lower() for candidate in second)
+    assert "consensus" not in text
+    assert "surprise" not in text
+    assert all(
+        candidate.freshness_threshold_days == definitions[series_id].stale_after_days
+        for series_id, candidate in second_by_series.items()
+    )
+
+
+def test_hard_source_daily_path_uses_full_revision_aware_macro_pipeline(monkeypatch, tmp_path):
+    definitions = load_macro_series(Path("configs/macro_series.yaml"))
+    monkeypatch.setattr("investment_os.hard_source_collectors._safe_sec_recent", lambda: {})
+    monkeypatch.setattr("investment_os.hard_source_collectors._download_yfinance_snapshot", lambda _symbols: {})
+    monkeypatch.setattr(
+        "investment_os.hard_source_collectors._fred_series_text",
+        lambda series_id: f"observation_date,{series_id}\n2026-07-07,4.0\n",
+    )
+
+    candidates = collect_hard_source_candidates(
+        Path("configs/watchlist.sample.yaml"),
+        generated_at=datetime(2026, 7, 8, tzinfo=timezone.utc),
+        macro_state_path=tmp_path / "macro-state.json",
+    )
+    macro = [candidate for candidate in candidates if candidate.source_type == "primary_macro_fred_live"]
+
+    assert {candidate.item_id.rsplit(":", 1)[-1] for candidate in macro} == set(definitions)
+    assert (tmp_path / "macro-state.json").exists()

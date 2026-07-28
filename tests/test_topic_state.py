@@ -389,3 +389,37 @@ def test_stale_status_stays_diagnostic_but_cannot_be_current_fact(tmp_path):
     assert changes[0].evidence_status == "stale"
     assert changes[0].changed_since_last_push is False
     assert changes[0].change_type == "background_only"
+
+
+def test_source_threshold_controls_promotion_window_instead_of_hardcoded_three_days(tmp_path):
+    weekend_current = _candidate(
+        as_of_date="2026-07-05",
+        freshness_status="current",
+        freshness_threshold_days=5,
+        thesis_impact="unknown_narrowed",
+    )
+    candidates_csv = _write(tmp_path, [weekend_current])
+
+    changes, _, _ = update_topic_state(
+        candidates_csv, tmp_path / "topic_state.json", tmp_path / "state", generated_at=NOW
+    )
+
+    assert changes[0].change_type == "new_question"
+    assert changes[0].changed_since_last_push is True
+
+
+def test_explicit_stale_status_cannot_promote_even_inside_source_threshold(tmp_path):
+    stale = _candidate(
+        as_of_date="2026-07-10",
+        freshness_status="stale",
+        freshness_threshold_days=5,
+        thesis_impact="unknown_narrowed",
+    )
+    candidates_csv = _write(tmp_path, [stale])
+
+    changes, _, _ = update_topic_state(
+        candidates_csv, tmp_path / "topic_state.json", tmp_path / "state", generated_at=NOW
+    )
+
+    assert changes[0].change_type == "background_only"
+    assert changes[0].changed_since_last_push is False

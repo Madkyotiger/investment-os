@@ -6,10 +6,14 @@ import os
 import tempfile
 from dataclasses import asdict, dataclass
 from datetime import date, datetime
+from importlib.resources import files
 from pathlib import Path
 from typing import Callable, Mapping
 
 import yaml
+
+
+BUNDLED_MACRO_SERIES = files("investment_os").joinpath("data", "macro_series.yaml")
 
 
 @dataclass(frozen=True)
@@ -35,9 +39,18 @@ class MacroObservation:
     source_url: str
 
 
-def load_macro_series(path: Path) -> dict[str, MacroSeriesDefinition]:
-    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+def _load_macro_config(path: Path | None = None) -> dict[str, object]:
+    configured = path or Path("configs/macro_series.yaml")
+    source = configured if configured.is_file() else BUNDLED_MACRO_SERIES
+    raw = yaml.safe_load(source.read_text(encoding="utf-8")) or {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def load_macro_series(path: Path | None = None) -> dict[str, MacroSeriesDefinition]:
+    raw = _load_macro_config(path)
     rows = raw.get("series") or {}
+    if not isinstance(rows, dict):
+        raise ValueError("macro config series must be a mapping")
     definitions: dict[str, MacroSeriesDefinition] = {}
     for series_id, row in rows.items():
         definitions[str(series_id)] = MacroSeriesDefinition(
@@ -48,6 +61,17 @@ def load_macro_series(path: Path) -> dict[str, MacroSeriesDefinition]:
             unit=str(row["unit"]),
         )
     return definitions
+
+
+def load_market_stale_after_days(path: Path | None = None) -> int:
+    raw = _load_macro_config(path)
+    market = raw.get("market") or {}
+    if not isinstance(market, dict):
+        raise ValueError("macro config market policy must be a mapping")
+    threshold = int(market.get("stale_after_days", 0))
+    if threshold <= 0:
+        raise ValueError("macro config market.stale_after_days must be positive")
+    return threshold
 
 
 def _valid_rows(series_id: str, text: str) -> list[tuple[str, float]]:
@@ -147,5 +171,7 @@ def collect_macro_observations(
             )
         )
 
-    _write_state(state_path, {item.series_id: asdict(item) for item in observations})
+    next_state = dict(previous)
+    next_state.update({item.series_id: asdict(item) for item in observations})
+    _write_state(state_path, next_state)
     return observations

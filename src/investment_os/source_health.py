@@ -33,6 +33,9 @@ class SourceHealthStore:
     def get(self, source_name: str) -> dict[str, object]:
         return dict(self._load().get(source_name, {}))
 
+    def all(self) -> dict[str, dict[str, object]]:
+        return {name: dict(record) for name, record in self._load().items()}
+
     def record_success(
         self,
         source_name: str,
@@ -40,6 +43,10 @@ class SourceHealthStore:
         occurred_at: datetime,
         *,
         content_hash: str = "",
+        as_of_date: str = "",
+        freshness_status: str = "",
+        freshness_threshold_days: int = 0,
+        evidence_status: str = "",
     ) -> None:
         data = self._load()
         record = data.setdefault(source_name, {})
@@ -50,6 +57,10 @@ class SourceHealthStore:
                     "source_url": source_url,
                     "retrieved_at": occurred_at.isoformat(),
                     "content_hash": content_hash,
+                    "as_of_date": as_of_date,
+                    "freshness_status": freshness_status,
+                    "freshness_threshold_days": freshness_threshold_days,
+                    "evidence_status": evidence_status,
                 },
             }
         )

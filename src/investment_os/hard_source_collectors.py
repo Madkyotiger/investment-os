@@ -4,6 +4,7 @@ import argparse
 import csv
 import hashlib
 import json
+import tempfile
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,7 +14,14 @@ import yaml
 
 from .evidence_contract import infer_body_read_status, normalize_evidence_status
 from .http_client import HttpClient, HttpRequestError
-from .macro_sources import load_macro_series, observation_freshness
+from .macro_sources import (
+    MacroObservation,
+    collect_macro_observations,
+    load_macro_series,
+    load_market_stale_after_days,
+    observation_freshness,
+    parse_latest_observation,
+)
 
 
 _HTTP_CLIENT = HttpClient()
@@ -47,10 +55,12 @@ class HardSourceCandidate:
     cannot_prove: str = ""
     thesis_impact: str = "unknown"
     observed_value: str = ""
+    revision: float | None = None
     retrieved_at: str = ""
     body_read_status: str = ""
     content_hash: str = ""
     freshness_status: str = "current"
+    freshness_threshold_days: int = 3
     evidence_status: str = ""
     source_errors: list[dict[str, object]] = field(default_factory=list)
     accession_number: str = ""
@@ -169,30 +179,45 @@ def collect_sec_watchlist_candidates(watchlist_groups: dict[str, list[str]], gen
     return candidates
 
 
-def _latest_sec_filing_for_cik(cik: str) -> dict[str, str] | None:
+def _recent_sec_filings_for_cik(cik: str) -> list[dict[str, str]]:
     if not cik:
-        return None
+        return []
     padded = str(cik).zfill(10)
     try:
         data = _http_json(f"https://data.sec.gov/submissions/CIK{padded}.json")
     except HttpRequestError as error:
         _record_source_error(error)
-        return None
+        return []
     recent = data.get("filings", {}).get("recent", {}) if isinstance(data, dict) else {}
     forms = recent.get("form", [])
     dates = recent.get("filingDate", [])
     accessions = recent.get("accessionNumber", [])
     primary_docs = recent.get("primaryDocument", [])
+    filings: list[dict[str, str]] = []
     for index, form in enumerate(forms):
         if str(form) not in RELEVANT_SEC_FORMS:
             continue
-        return {
-            "form": str(form),
-            "filing_date": str(dates[index]) if index < len(dates) else "",
-            "accession": str(accessions[index]) if index < len(accessions) else "",
-            "primary_doc": str(primary_docs[index]) if index < len(primary_docs) else "",
-        }
-    return None
+        filings.append(
+            {
+                "form": str(form),
+                "filing_date": str(dates[index]) if index < len(dates) else "",
+                "accession": str(accessions[index]) if index < len(accessions) else "",
+                "primary_doc": str(primary_docs[index]) if index < len(primary_docs) else "",
+            }
+        )
+    return filings
+
+
+def _latest_sec_filing_for_cik(cik: str) -> dict[str, str] | None:
+    filings = _recent_sec_filings_for_cik(cik)
+    return filings[0] if filings else None
+
+
+def _latest_sec_business_filing_for_cik(cik: str) -> dict[str, str] | None:
+    return next(
+        (filing for filing in _recent_sec_filings_for_cik(cik) if filing["form"] in BUSINESS_FILING_FORMS),
+        None,
+    )
 
 
 def collect_sec_recent_filing_candidates(
@@ -253,7 +278,17 @@ def collect_sec_recent_filing_candidates(
                 accession_number=latest["accession"],
             )
         )
-        if latest["form"] not in BUSINESS_FILING_FORMS or not source_url.startswith("https://www.sec.gov/Archives/"):
+        business_latest = latest if latest["form"] in BUSINESS_FILING_FORMS else _latest_sec_business_filing_for_cik(cik)
+        if not business_latest:
+            continue
+        business_accession_path = business_latest["accession"].replace("-", "")
+        source_url = (
+            f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{business_accession_path}/"
+            f"{business_latest['primary_doc']}"
+            if cik and business_latest["accession"] and business_latest["primary_doc"]
+            else "https://data.sec.gov/submissions/"
+        )
+        if not source_url.startswith("https://www.sec.gov/Archives/"):
             continue
         try:
             body = _http_text(source_url, timeout=12)
@@ -265,16 +300,16 @@ def collect_sec_recent_filing_candidates(
         content_hash = "sha256:" + hashlib.sha256(body.encode("utf-8")).hexdigest()
         candidates.append(
             HardSourceCandidate(
-                item_id=f"primary_sec:{ticker}:{latest['accession']}:body",
+                item_id=f"primary_sec:{ticker}:{business_latest['accession']}:body",
                 lane="company_events",
-                title=f"{ticker} {latest['form']} primary filing body was retrieved",
+                title=f"{ticker} {business_latest['form']} primary filing body was retrieved",
                 summary=(
-                    f"SEC filing body retrieved for {ticker} {latest['form']} dated "
-                    f"{latest['filing_date']}; interpretation remains blocked pending relevant-section review."
+                    f"SEC filing body retrieved for {ticker} {business_latest['form']} dated "
+                    f"{business_latest['filing_date']}; interpretation remains blocked pending relevant-section review."
                 ),
                 source="SEC primary filing body",
                 source_type="primary_filing_body_read",
-                as_of_date=latest["filing_date"],
+                as_of_date=business_latest["filing_date"],
                 retrieved_at=generated_at.isoformat(),
                 tickers=ticker,
                 themes=",".join(tags),
@@ -294,7 +329,7 @@ def collect_sec_recent_filing_candidates(
                 body_read_status="read",
                 content_hash=content_hash,
                 evidence_status="primary_body_read",
-                accession_number=latest["accession"],
+                accession_number=business_latest["accession"],
             )
         )
     return candidates
@@ -315,8 +350,112 @@ def _fred_latest(series_id: str) -> tuple[str, float] | None:
     return None
 
 
+def _fred_series_text(series_id: str) -> str:
+    return _http_text(f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}", timeout=12)
+
+
+def _macro_candidate(observation: MacroObservation, generated_at: datetime, threshold_days: int) -> HardSourceCandidate:
+    structured = {
+        "series_id": observation.series_id,
+        "observation_date": observation.observation_date,
+        "level": observation.level,
+        "change": observation.change,
+        "unit": observation.unit,
+    }
+    observed_value = json.dumps(structured, sort_keys=True, separators=(",", ":"))
+    content_hash = "sha256:" + hashlib.sha256(observed_value.encode("utf-8")).hexdigest()
+    display_unit = {"percent": "%", "index": "指数点", "thousands": "千人"}.get(
+        observation.unit, observation.unit
+    )
+    change_text = ""
+    if observation.change is not None:
+        change_text = f"；较前次发布观测变化 {observation.change:+.4g} {display_unit}"
+    revision_text = ""
+    if observation.revision is not None:
+        revision_text = f"；检测到同日期数值修订 {observation.revision:+.4g} {display_unit}"
+    return HardSourceCandidate(
+        item_id=f"primary_macro:fred:{observation.series_id}",
+        lane="macro_regime",
+        title=f"FRED {observation.series_id} 官方观测已更新，待结合相邻数据核验",
+        summary=(
+            f"FRED {observation.series_id} 在 {observation.observation_date} 的官方观测值为 "
+            f"{observation.level:.4g} {display_unit}{change_text}{revision_text}。"
+        ),
+        source="FRED fredgraph.csv",
+        source_type="primary_macro_fred_live",
+        as_of_date=observation.observation_date,
+        themes="macro,official_observation",
+        source_url=observation.source_url,
+        source_authority=5,
+        freshness=1 if observation.freshness_status == "stale" else 5,
+        evidence_change=4,
+        magnitude=3,
+        novelty=3,
+        decision_usefulness=4,
+        portfolio_relevance=3,
+        confidence="verified_data",
+        thesis_impact="unknown_narrowed",
+        observed_value=observed_value,
+        revision=observation.revision,
+        retrieved_at=generated_at.isoformat(),
+        next_check="先与相邻官方序列和相关市场价格交叉核验，再解释其含义。",
+        kill_signal="若观测已过期、再次修订或与相邻官方数据冲突，只保留为背景。",
+        cannot_prove="单个官方宏观观测不能证明市场方向、因果关系或公司层面影响。",
+        content_hash=content_hash,
+        freshness_status=observation.freshness_status,
+        freshness_threshold_days=threshold_days,
+    )
+
+
+def collect_fred_macro_candidates(
+    generated_at: datetime,
+    *,
+    state_path: Path | None = None,
+) -> list[HardSourceCandidate]:
+    definitions = load_macro_series()
+    fetched: dict[str, str] = {}
+    usable_definitions = {}
+    for series_id, definition in definitions.items():
+        try:
+            text = _fred_series_text(series_id)
+            parse_latest_observation(series_id, text, generated_at, definition)
+            fetched[series_id] = text
+            usable_definitions[series_id] = definition
+        except HttpRequestError as error:
+            _record_source_error(error)
+        except ValueError as error:
+            _LAST_SOURCE_ERRORS.append(
+                {
+                    "source": "FRED",
+                    "code": "invalid_observation",
+                    "message": str(error),
+                    "source_url": f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}",
+                    "transient": False,
+                }
+            )
+    if not usable_definitions:
+        return []
+
+    def collect_at(path: Path) -> list[HardSourceCandidate]:
+        observations = collect_macro_observations(
+            usable_definitions,
+            fetch_text=lambda series_id: fetched[series_id],
+            state_path=path,
+            retrieved_at=generated_at,
+        )
+        return [
+            _macro_candidate(observation, generated_at, definitions[observation.series_id].stale_after_days)
+            for observation in observations
+        ]
+
+    if state_path is not None:
+        return collect_at(state_path)
+    with tempfile.TemporaryDirectory(prefix="investment-os-macro-") as temporary:
+        return collect_at(Path(temporary) / "macro-state.json")
+
+
 def collect_fred_yield_candidates(generated_at: datetime) -> list[HardSourceCandidate]:
-    definitions = load_macro_series(Path("configs/macro_series.yaml"))
+    definitions = load_macro_series()
     series = {
         "DGS2": definitions["DGS2"].label,
         "DGS10": definitions["DGS10"].label,
@@ -334,6 +473,7 @@ def collect_fred_yield_candidates(generated_at: datetime) -> list[HardSourceCand
     if "DGS2" in latest and "DGS10" in latest:
         curve_note = f"; 10Y-2Y spread {(latest['DGS10'][1] - latest['DGS2'][1]):.2f}pp"
     as_of = max(date for date, _ in latest.values())
+    freshness_threshold_days = min(definitions[series_id].stale_after_days for series_id in latest)
     freshness_status = (
         "stale"
         if any(
@@ -367,6 +507,7 @@ def collect_fred_yield_candidates(generated_at: datetime) -> list[HardSourceCand
         cannot_prove="Yield levels alone do not prove equity direction or sector causality.",
         content_hash=content_hash,
         freshness_status=freshness_status,
+        freshness_threshold_days=freshness_threshold_days,
     )]
 
 
@@ -480,6 +621,14 @@ def collect_market_move_candidates(watchlist_groups: dict[str, list[str]], gener
         )
     ranked = sorted(snapshots.items(), key=lambda item: abs(float(item[1].get("one_day_pct", 0))), reverse=True)
     top_symbol, top = ranked[0]
+    market_freshness_threshold = load_market_stale_after_days()
+    try:
+        market_age_days = (
+            generated_at.date() - datetime.fromisoformat(str(top.get("date", ""))[:10]).date()
+        ).days
+    except ValueError:
+        market_age_days = market_freshness_threshold + 1
+    freshness_status = "current" if 0 <= market_age_days <= market_freshness_threshold else "stale"
     top_one_day_move = abs(float(top.get("one_day_pct", 0)))
     summary = "; ".join(f"{symbol}: close {data['close']}, 1D {data['one_day_pct']}%, 60D {data['sixty_day_pct']}%" for symbol, data in ranked[:5])
     summary = f"{summary}. {cross_check_note}"
@@ -501,7 +650,8 @@ def collect_market_move_candidates(watchlist_groups: dict[str, list[str]], gener
         tickers=",".join(symbols),
         themes="market_proxies",
         source_url="https://query1.finance.yahoo.com/; https://stooq.com/",
-        source_authority=4 if confidence == "market_data_cross_checked" else 3, freshness=5,
+        source_authority=4 if confidence == "market_data_cross_checked" else 3,
+        freshness=1 if freshness_status == "stale" else 5,
         evidence_change=4 if top_one_day_move >= 1 else 2,
         magnitude=4 if top_one_day_move >= 1 else 2,
         novelty=3, decision_usefulness=4, portfolio_relevance=4,
@@ -510,6 +660,8 @@ def collect_market_move_candidates(watchlist_groups: dict[str, list[str]], gener
         observed_value=observed_value,
         retrieved_at=generated_at.isoformat(),
         content_hash=content_hash,
+        freshness_status=freshness_status,
+        freshness_threshold_days=market_freshness_threshold,
         source_errors=source_errors,
         next_check="Use market proxy moves only after cross-checking the quote source and matching them against rates, dollar and sector leadership.",
         kill_signal="If quote sources are stale, unavailable, or materially inconsistent, downgrade market-action commentary.",
@@ -603,7 +755,12 @@ def collect_watchlist_relevance_candidates(watchlist_groups: dict[str, list[str]
     return candidates
 
 
-def collect_hard_source_candidates(watchlist_path: Path, generated_at: datetime | None = None) -> list[HardSourceCandidate]:
+def collect_hard_source_candidates(
+    watchlist_path: Path,
+    generated_at: datetime | None = None,
+    *,
+    macro_state_path: Path | None = None,
+) -> list[HardSourceCandidate]:
     generated_at = generated_at or datetime.now(timezone.utc)
     _LAST_SOURCE_ERRORS.clear()
     groups = _load_watchlist(watchlist_path)
@@ -618,7 +775,10 @@ def collect_hard_source_candidates(watchlist_path: Path, generated_at: datetime 
         )
     )
     candidates.extend(collect_macro_hard_candidates(generated_at))
-    candidates.extend(collect_fred_yield_candidates(generated_at))
+    if macro_state_path is None:
+        candidates.extend(collect_fred_yield_candidates(generated_at))
+    else:
+        candidates.extend(collect_fred_macro_candidates(generated_at, state_path=macro_state_path))
     candidates.extend(collect_market_move_candidates(groups, generated_at))
     candidates.extend(collect_watchlist_relevance_candidates(groups, generated_at))
     retrieved_at = generated_at.isoformat()

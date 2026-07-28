@@ -33,10 +33,11 @@ The completed output contains:
 - `run_state.json`: run result, input fingerprint, meaningful-change count, and promoted IDs;
 - `topic_changes.json` and `topic_changes.csv`: state comparison used by promotion;
 - `source_errors.json`: structured collection failures, including an empty list when none occurred;
+- `source_health.json`: current diagnostics plus explicitly labeled current/stale last-known-good state;
 - `delivery_preview.json`: explicit proof that the daily command did not request delivery;
 - `cache/source-records/`: local source receipts.
 
-The durable research state exists only at the exact `--state` path.
+The durable topic state exists at the exact `--state` path. Live runs also maintain sibling `*.macro.json` and `*.source-health.json` files for revision detection and source health. They are staged with the run and committed only against a complete matching manifest; last-known-good data is diagnostic and is never substituted or promoted as a current observation.
 
 ## Verify idempotency and quiet state
 
@@ -65,7 +66,7 @@ uv run investment-os daily \
   --strict
 ```
 
-Live collection fails closed and never substitutes synthetic observations. In strict mode, exit `2` means every fresh usable live source failed; a successfully fetched observation outside its configured cadence/staleness window is not usable. A blocked source target, metadata-only filing, or one failed source does not fail strict mode when another fresh usable live source succeeded. A successful collection may still return `quiet` when no changed promotable item exists.
+Live collection fails closed and never substitutes synthetic observations. In strict mode, exit `2` means every fresh usable live source failed; a successfully fetched observation outside its configured cadence/staleness window is not usable. `configs/macro_series.yaml` defines each FRED series threshold and a five-calendar-day market snapshot threshold so weekends/holidays can remain current without accepting arbitrarily old closes. This config is bundled as package data and used automatically when the checkout-relative file is unavailable. A blocked source target, metadata-only filing, or one failed source does not fail strict mode when another fresh usable live source succeeded. A successful collection may still return `quiet` when no changed promotable item exists.
 
 SEC requests should use `SEC_EDGAR_IDENTITY` in the environment. Do not put it in tracked files.
 

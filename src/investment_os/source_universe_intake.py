@@ -46,10 +46,12 @@ class SourceCandidate:
     geography: str = ""
     evidence_digest: str = ""
     observed_value: str = ""
+    revision: float | None = None
     retrieved_at: str = ""
     body_read_status: str = ""
     content_hash: str = ""
     freshness_status: str = ""
+    freshness_threshold_days: int = 3
     source_errors: list[dict[str, object]] = field(default_factory=list)
 
     def __post_init__(self) -> None:
@@ -339,10 +341,12 @@ def _hard_source_candidates(path: Path | None) -> list[SourceCandidate]:
                 cannot_prove=row.get("cannot_prove", ""),
                 evidence_digest=row.get("evidence_digest", ""),
                 observed_value=row.get("observed_value", ""),
+                revision=float(row["revision"]) if row.get("revision") not in {None, "", "None"} else None,
                 retrieved_at=row.get("retrieved_at", ""),
                 body_read_status=row.get("body_read_status", ""),
                 content_hash=row.get("content_hash", ""),
                 freshness_status=row.get("freshness_status", ""),
+                freshness_threshold_days=int(float(row.get("freshness_threshold_days") or 3)),
             )
         )
     return candidates

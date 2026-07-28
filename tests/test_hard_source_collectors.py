@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -72,6 +73,20 @@ def test_fred_live_candidate_treats_threshold_boundary_as_current(monkeypatch):
     candidate = collect_fred_yield_candidates(datetime(2026, 7, 10, tzinfo=timezone.utc))[0]
 
     assert candidate.freshness_status == "current"
+    assert candidate.freshness_threshold_days == 5
+
+
+def test_fred_config_falls_back_to_bundled_package_data_outside_checkout(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        "investment_os.hard_source_collectors._fred_latest",
+        lambda _series_id: ("2026-07-05", 4.0),
+    )
+
+    candidate = collect_fred_yield_candidates(datetime(2026, 7, 10, tzinfo=timezone.utc))[0]
+
+    assert candidate.freshness_status == "current"
+    assert candidate.freshness_threshold_days == 5
 
 
 def test_market_move_candidate_can_be_built_from_snapshot(monkeypatch):
@@ -94,6 +109,23 @@ def test_market_move_candidate_can_be_built_from_snapshot(monkeypatch):
     assert candidates[0].thesis_impact == "unknown_narrowed"
     assert candidates[0].observed_value
     assert candidates[0].content_hash.startswith("sha256:")
+    assert candidates[0].freshness_threshold_days == 5
+
+
+def test_market_move_candidate_uses_configured_snapshot_freshness(monkeypatch):
+    snapshot = {
+        "SPY": {"date": "2026-06-01", "close": 620.0, "one_day_pct": 1.2, "sixty_day_pct": 8.0},
+    }
+    monkeypatch.setattr("investment_os.hard_source_collectors._download_yfinance_snapshot", lambda _symbols: snapshot)
+    monkeypatch.setattr("investment_os.hard_source_collectors._download_stooq_snapshot", lambda _symbols: snapshot)
+
+    candidate = collect_market_move_candidates(
+        {"market_proxies": ["SPY"]}, datetime(2026, 7, 8, tzinfo=timezone.utc)
+    )[0]
+
+    assert candidate.freshness_status == "stale"
+    assert candidate.freshness == 1
+    assert candidate.evidence_status == "stale"
 
 
 def test_market_numeric_revision_changes_structured_evidence_but_unchanged_snapshot_is_idempotent(monkeypatch):
@@ -249,3 +281,39 @@ def test_sec_body_candidate_retains_accession_url_and_hash(monkeypatch):
     assert body.cannot_prove
     assert body.retrieved_at == "2026-07-08T00:00:00+00:00"
     assert body.thesis_impact == "unknown_narrowed"
+
+
+def test_sec_form4_metadata_does_not_block_newer_business_filing_body(monkeypatch):
+    monkeypatch.setattr(
+        "investment_os.hard_source_collectors._safe_sec_recent",
+        lambda: {"0": {"ticker": "ACME", "cik_str": "1234", "title": "Acme"}},
+    )
+    submissions = {
+        "filings": {
+            "recent": {
+                "form": ["4", "8-K"],
+                "filingDate": ["2026-07-08", "2026-07-07"],
+                "accessionNumber": ["0001-04-01", "0001-08-01"],
+                "primaryDocument": ["form4.xml", "event.htm"],
+            }
+        }
+    }
+    requested_urls = []
+    monkeypatch.setattr("investment_os.hard_source_collectors._http_json", lambda _url, timeout=10: submissions)
+
+    def fake_text(url: str, timeout=10):
+        requested_urls.append(url)
+        return "<html><body>8-K business filing body</body></html>"
+
+    monkeypatch.setattr("investment_os.hard_source_collectors._http_text", fake_text)
+
+    candidates = collect_sec_recent_filing_candidates(
+        {"research": ["ACME"]}, datetime(2026, 7, 8, tzinfo=timezone.utc)
+    )
+
+    assert any("Form 4" in candidate.title or "is 4" in candidate.title for candidate in candidates)
+    body = next(candidate for candidate in candidates if candidate.evidence_status == "primary_body_read")
+    assert "8-K" in body.title
+    assert body.accession_number == "0001-08-01"
+    assert requested_urls and requested_urls[0].endswith("/event.htm")
+    assert "form4.xml" not in json.dumps(body.to_row())

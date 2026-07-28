@@ -56,7 +56,7 @@ uv run investment-os daily \
   --offline
 ```
 
-Run it again with the same `--state` and a different `--out`: the second completed run returns `daily_run=quiet` and does not re-promote unchanged evidence. `--strict` in live mode fails only when no usable live source succeeds; blocked source targets do not by themselves fail a run. See [`docs/QUICKSTART.md`](docs/QUICKSTART.md).
+Run it again with the same `--state` and a different `--out`: the second completed run returns `daily_run=quiet` and does not re-promote unchanged evidence. `--strict` in live mode fails only when no usable fresh live source succeeds; blocked source targets and stale last-known-good observations do not count as current successes. FRED cadence thresholds and the five-calendar-day market snapshot threshold are explicit in `configs/macro_series.yaml`; the same config is bundled in the wheel for runs outside a checkout. See [`docs/QUICKSTART.md`](docs/QUICKSTART.md).
 
 Preview the completed first brief for Feishu without making a network request:
 

@@ -47,6 +47,8 @@ def infer_topic_key(row: Mapping[str, object]) -> str:
     tickers = _text(row, "tickers")
     lane = _text(row, "lane")
 
+    if source_type == "primary_macro_fred_live":
+        return f"macro:{item_id.rsplit(':', 1)[-1].lower()}"
     if source_type in {"primary_macro_fred_yields_live", "primary_macro_rates"} or "yield_curve" in item_id:
         return "macro:rates-duration"
     if source_type == "primary_macro_calendar" or "fed_calendar" in item_id:
@@ -97,7 +99,7 @@ def infer_research_question(row: Mapping[str, object]) -> str:
     ticker = _text(row, "tickers") or "该公司"
     if source_type == "primary_sec_recent_filing":
         return f"{ticker} 这份披露正文是否包含会改变经营、风险或资本配置判断的新事实？"
-    if source_type in {"primary_macro_fred_yields_live", "primary_macro_rates"}:
+    if source_type in {"primary_macro_fred_live", "primary_macro_fred_yields_live", "primary_macro_rates"}:
         return "利率变化是否得到美元、期限资产与成长板块相对表现的交叉确认？"
     if source_type in {"market_proxy_prices_live", "market_data"}:
         return "这次价格变化来自公司事实、行业 beta，还是资金与情绪？"
@@ -181,6 +183,8 @@ def evidence_fingerprint(row: Mapping[str, object]) -> str:
         "evidence_digest": _text(enriched, "evidence_digest"),
         "content_hash": _text(enriched, "content_hash"),
         "observed_value": _text(enriched, "observed_value"),
+        "freshness_status": _text(enriched, "freshness_status"),
+        "freshness_threshold_days": _text(enriched, "freshness_threshold_days"),
         "cannot_prove": _text(enriched, "cannot_prove"),
         "next_primary_source": _text(enriched, "next_primary_source"),
     }
@@ -196,11 +200,20 @@ def _parse_date(value: str) -> date | None:
 
 
 def is_fresh(row: Mapping[str, object], generated_at: datetime, max_age_days: int = 3) -> bool:
+    freshness_status = _text(row, "freshness_status").lower()
+    if freshness_status == "stale":
+        return False
+    try:
+        source_threshold = int(float(_text(row, "freshness_threshold_days")))
+    except ValueError:
+        source_threshold = max_age_days
+    if source_threshold <= 0:
+        return False
     source_date = _parse_date(_text(row, "as_of_date"))
     if source_date is None:
         return False
     age = (generated_at.date() - source_date).days
-    return 0 <= age <= max_age_days
+    return 0 <= age <= source_threshold
 
 
 def classify_change(

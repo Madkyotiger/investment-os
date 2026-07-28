@@ -257,6 +257,94 @@ def test_manifest_write_failure_never_advances_durable_topic_state(monkeypatch, 
     assert recovered.status == "completed"
 
 
+def test_reused_output_failure_never_leaves_complete_manifest_mismatching_artifacts(monkeypatch, tmp_path: Path):
+    state_path = tmp_path / "topic-state.json"
+    out_dir = tmp_path / "reused-output"
+    first = run_daily(WATCHLIST, PROFILE, state_path, out_dir, offline=True)
+    original_write_json = daily_runner._write_json
+
+    def fail_before_new_manifest(path: Path, payload: object) -> None:
+        if path.name == "source_receipt.json":
+            raise OSError("injected staged artifact failure")
+        original_write_json(path, payload)
+
+    monkeypatch.setattr(daily_runner, "_write_json", fail_before_new_manifest)
+    with pytest.raises(OSError, match="injected staged artifact failure"):
+        run_daily(WATCHLIST, PROFILE, state_path, out_dir, offline=True)
+
+    if first.manifest_path.exists():
+        manifest = json.loads(first.manifest_path.read_text(encoding="utf-8"))
+        assert manifest["run_complete"] is True
+        for name, metadata in manifest["artifacts"].items():
+            assert _sha256(out_dir / name) == metadata["sha256"]
+
+
+def test_atomic_directory_publish_failure_restores_previous_complete_run(monkeypatch, tmp_path: Path):
+    state_path = tmp_path / "topic-state.json"
+    out_dir = tmp_path / "reused-output"
+    first = run_daily(WATCHLIST, PROFILE, state_path, out_dir, offline=True)
+    original_replace = daily_runner.os.replace
+
+    def fail_staged_directory_publish(source, destination):
+        if Path(source).name == "published-run" and Path(destination) == out_dir:
+            raise OSError("injected directory publish failure")
+        original_replace(source, destination)
+
+    monkeypatch.setattr(daily_runner.os, "replace", fail_staged_directory_publish)
+    with pytest.raises(OSError, match="injected directory publish failure"):
+        run_daily(WATCHLIST, PROFILE, state_path, out_dir, offline=True)
+
+    manifest = json.loads(first.manifest_path.read_text(encoding="utf-8"))
+    assert manifest["run_complete"] is True
+    for name, metadata in manifest["artifacts"].items():
+        assert _sha256(out_dir / name) == metadata["sha256"]
+
+
+def test_live_daily_persists_source_health_and_does_not_promote_last_known_good(monkeypatch, tmp_path: Path):
+    old_candidate = HardSourceCandidate(
+        item_id="macro:health",
+        lane="macro_regime",
+        title="Fetched official observation",
+        summary="An official level was retrieved.",
+        source="FRED",
+        source_type="primary_macro_fred_live",
+        source_url="https://fred.example/series",
+        as_of_date="2020-01-01",
+        retrieved_at="2026-07-28T00:00:00+00:00",
+        content_hash="sha256:health",
+        observed_value='{"level": 1.0}',
+        freshness_status="current",
+        freshness_threshold_days=5,
+        thesis_impact="unknown_narrowed",
+    )
+    calls = {"count": 0}
+
+    def fake_collect(*_args, **_kwargs):
+        calls["count"] += 1
+        return [old_candidate] if calls["count"] == 1 else []
+
+    monkeypatch.setattr("investment_os.daily_runner.collect_hard_source_candidates", fake_collect)
+    monkeypatch.setattr(
+        "investment_os.daily_runner.get_last_source_errors",
+        lambda: [] if calls["count"] == 1 else [{"source": "FRED", "code": "timeout", "message": "timed out"}],
+    )
+    state_path = tmp_path / "state.json"
+
+    run_daily(WATCHLIST, PROFILE, state_path, tmp_path / "live-1")
+    second = run_daily(WATCHLIST, PROFILE, state_path, tmp_path / "live-2")
+    manifest = json.loads(second.manifest_path.read_text(encoding="utf-8"))
+    health_path = tmp_path / "state.source-health.json"
+
+    assert health_path.exists()
+    assert manifest["source_health"]
+    fred_health = next(value for key, value in manifest["source_health"].items() if "fred" in key.lower())
+    assert fred_health["last_success_at"]
+    assert fred_health["last_failure_at"]
+    assert fred_health["last_known_good_status"] == "stale"
+    assert manifest["promoted_items"] == 0
+    assert second.status == "quiet"
+
+
 def test_completed_receipt_recovers_state_commit_interrupted_after_manifest(monkeypatch, tmp_path: Path):
     state_path = tmp_path / "topic-state.json"
     original_atomic_write_bytes = daily_runner._atomic_write_bytes
