@@ -13,10 +13,11 @@ This repository is a public evaluation release. It does not recommend, size, or 
 - Evidence states that keep metadata, single-source data, cross-checked data, and source-body reading separate.
 - Research questions, counter-explanations, next-source prompts, and kill signals.
 - A brief renderer that stays quiet when nothing changed enough to deserve attention.
-- An auditable `investment-os daily` runner with source receipts, manifests, topic state, structured failures, and cache-backed offline fixtures.
+- An auditable `investment-os daily` runner with explicit watchlist/profile/state paths, source receipts, completed-run manifests, structured failures, and deterministic offline fixtures.
+- A completed-brief-only Feishu delivery boundary whose default behavior is a local payload preview, not a network request.
 - Boundary tests that reject trade instructions and internal process leakage from reader output.
 
-It is not a brokerage client, portfolio manager, trading bot, or autonomous financial adviser. Scheduling and message delivery are deliberately outside this repository.
+It is not a brokerage client, portfolio manager, trading bot, autonomous financial adviser, or scheduler. Live delivery is code-gated and disabled by default; no scheduler is included.
 
 ## Quick start
 
@@ -48,11 +49,25 @@ For the full daily path without network access:
 
 ```bash
 uv run investment-os daily \
-  --config configs/daily_brief.sample.yaml \
-  --out .local/daily-evaluation
+  --config configs/watchlist.sample.yaml \
+  --profile configs/profiles.sample.yaml \
+  --state .local/daily-state.json \
+  --out .local/daily-evaluation \
+  --offline
 ```
 
-Run the same command twice to verify stable brief output and an `unchanged` input state. The sample config is synthetic and delivery remains dry-run. See [`docs/QUICKSTART.md`](docs/QUICKSTART.md) for artifact verification and strict-mode checks.
+Run it again with the same `--state` and a different `--out`: the second completed run returns `daily_run=quiet` and does not re-promote unchanged evidence. `--strict` in live mode fails only when no usable live source succeeds; blocked source targets do not by themselves fail a run. See [`docs/QUICKSTART.md`](docs/QUICKSTART.md).
+
+Preview the completed first brief for Feishu without making a network request:
+
+```bash
+uv run investment-os deliver \
+  --brief .local/daily-evaluation/cxo_daily_brief.md \
+  --channel feishu \
+  --dry-run
+```
+
+The preview is local and does not require a webhook. Quiet or empty completed briefs produce a successful no-send result.
 
 ## Agent install
 
@@ -119,6 +134,12 @@ Investment OS can tell you:
 
 It must not tell you to buy, sell, hold, size a position, or execute a trade. Market data can be stale, incomplete, delayed, revised, or wrong. Source metadata proves a document exists; it does not prove the interpretation.
 
+## Delivery boundary
+
+Delivery accepts only a `cxo_daily_brief.md` whose bytes match the completed `manifest.json` beside it. It cannot collect sources or update topic state. Dry-run is the default and writes `feishu_delivery_preview.json` locally. Payloads over 20,000 serialized UTF-8 bytes are rejected, live attempts use at most three retries, and a local payload-derived dedup key prevents repeat live sends.
+
+Live Feishu sending is not part of the default workflow. It requires all three conditions: omit `--dry-run`, pass `--confirm-send`, and set `INVESTMENT_OS_ENABLE_LIVE_DELIVERY=true`; the endpoint is read only from `INVESTMENT_OS_FEISHU_WEBHOOK_URL`. Never place that value in a command, config, log, issue, or tracked file. No live send was performed for this implementation.
+
 ## Repository boundary
 
 The public repository contains code, synthetic fixtures, sample configuration, tests, and operating documentation. It does not contain personal profiles, holdings, private research, delivery channels, credentials, raw source captures, internal receipts, or local project history.
@@ -131,7 +152,7 @@ uv run python scripts/public_release_guard.py
 
 ## Project status
 
-Version `0.1.0` is ready for installation and evaluation, not unattended production. The next proof is a short human test using real daily briefs. Cron and automated delivery should wait until that test passes.
+Version `0.1.0` is ready for installation and evaluation, not unattended production. The next proof is a short human-reviewed test using real daily briefs. Scheduling and live delivery should remain disabled until that test passes and the destination is separately authorized.
 
 The repository does not depend on or vendor FinceptTerminal. No FinceptTerminal code is copied here; external systems may be used only as behavioral comparison points during evaluation.
 

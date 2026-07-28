@@ -1,6 +1,6 @@
 # Daily Brief Quickstart
 
-This quickstart exercises the evidence-first daily path entirely offline. It uses synthetic sources, writes only local artifacts, and cannot send messages or create a schedule.
+This route exercises the exact daily and delivery contracts entirely offline. It uses synthetic sources, writes only local artifacts, and cannot create a schedule.
 
 ## Install and verify
 
@@ -10,79 +10,82 @@ uv run investment-os doctor
 uv run investment-os demo --out .local/demo-output
 ```
 
-## Run the daily workflow
+## Run the deterministic daily workflow
 
 ```bash
-rm -rf .local/daily-evaluation
+rm -rf .local/daily-run-1 .local/daily-run-2 .local/daily-state.json
 uv run investment-os daily \
-  --config configs/daily_brief.sample.yaml \
-  --out .local/daily-evaluation
+  --config configs/watchlist.sample.yaml \
+  --profile configs/profiles.sample.yaml \
+  --state .local/daily-state.json \
+  --out .local/daily-run-1 \
+  --strict \
+  --offline
 ```
 
-Expected result:
+Expected result: exit `0` and `daily_run=completed`. Offline mode is deterministic. `--strict` does not reject blocked synthetic candidates because strict all-sources-failed behavior applies to live collection.
 
-```text
-daily_run=pass
-delivery_mode=dry-run
-```
+The completed output contains:
 
-The output directory contains:
+- `cxo_daily_brief.md`: maximum five changed, evidence-gated reader items;
+- `source_receipt.json`: source URL, source/retrieval dates, evidence/freshness state, content hash, and promotion decision;
+- `manifest.json`: completed/quiet result, source successes/failures, item counts, paths, and artifact hashes;
+- `run_state.json`: run result, input fingerprint, meaningful-change count, and promoted IDs;
+- `topic_changes.json` and `topic_changes.csv`: state comparison used by promotion;
+- `source_errors.json`: structured collection failures, including an empty list when none occurred;
+- `delivery_preview.json`: explicit proof that the daily command did not request delivery;
+- `cache/source-records/`: local source receipts.
 
-- `brief.md`: maximum five evidence-gated reader items;
-- `source_receipt.json`: source URL, source date, retrieval time, evidence state, freshness, and content hash;
-- `manifest.json`: input fingerprint, item counts, source failure count, and artifact hashes;
-- `run_state.json`: input change state and meaningful topic-change count;
-- `topic_state.json`: durable thesis/evidence state;
-- `source_errors.json`: structured source failures, including an empty list when none occurred;
-- `delivery_preview.json`: proof that delivery stayed dry-run;
-- `cache/source-records/`: stable cache records keyed by source.
+The durable research state exists only at the exact `--state` path.
 
-## Verify idempotency
-
-```bash
-shasum -a 256 .local/daily-evaluation/brief.md
-uv run investment-os daily \
-  --config configs/daily_brief.sample.yaml \
-  --out .local/daily-evaluation
-shasum -a 256 .local/daily-evaluation/brief.md
-python - <<'PY'
-import json
-from pathlib import Path
-
-state = json.loads(Path('.local/daily-evaluation/run_state.json').read_text())
-assert state['input_status'] == 'unchanged'
-assert state['meaningful_changes'] == 0
-print('idempotency=pass')
-PY
-```
-
-The two brief hashes must match. Cache record count must not grow on the second identical run.
-
-## Verify strict failure
-
-The sample deliberately includes source-target-only and stale metadata rows. Strict mode must reject them:
+## Verify idempotency and quiet state
 
 ```bash
 uv run investment-os daily \
-  --config configs/daily_brief.sample.yaml \
-  --out .local/daily-strict \
+  --config configs/watchlist.sample.yaml \
+  --profile configs/profiles.sample.yaml \
+  --state .local/daily-state.json \
+  --out .local/daily-run-2 \
+  --strict \
+  --offline
+```
+
+Expected: exit `0`, `daily_run=quiet`, zero promoted IDs, and quiet wording in the second brief. Unchanged evidence is not re-promoted.
+
+## Live collection and strict semantics
+
+Omit `--offline` to use the existing public SEC, FRED, yfinance, and Stooq collectors:
+
+```bash
+uv run investment-os daily \
+  --config configs/watchlist.sample.yaml \
+  --profile configs/profiles.sample.yaml \
+  --state .local/live-state.json \
+  --out .local/live-run \
   --strict
 ```
 
-Expected: exit code `2` with `strict evidence gate failed`. This is fail-closed behavior, not an installation error.
+Live collection fails closed and never substitutes synthetic observations. In strict mode, exit `2` means every usable live source failed. A blocked source target, metadata-only filing, or one failed source does not fail strict mode when another usable live source succeeded. A successful collection may still return `quiet` when no changed promotable item exists.
 
-## Operating boundaries
+SEC requests should use `SEC_EDGAR_IDENTITY` in the environment. Do not put it in tracked files.
 
-- `delivery_mode` must remain `dry-run`; any other value is rejected.
-- No scheduler is installed by this repository.
-- Do not put holdings, credentials, access tokens, or private profiles in tracked config.
-- A source target or filing metadata row is not promotable evidence.
-- Stale, mixed, unavailable, and incomplete body-read evidence stays out of the reader brief.
-- The output is research context only. It does not recommend or execute trades.
+## Preview completed Feishu payload
+
+```bash
+uv run investment-os deliver \
+  --brief .local/daily-run-1/cxo_daily_brief.md \
+  --channel feishu \
+  --dry-run
+```
+
+Expected: exit `0`, `delivery=dry_run`, `sent=false`, and a local `feishu_delivery_preview.json`. Dry-run requires no endpoint and performs no POST. Delivery rejects drafts, incomplete runs, and briefs changed after the manifest was written. Quiet/empty completed briefs return `delivery=quiet` and do not send.
+
+Live sending remains a separately authorized operation. The code requires `--confirm-send`, `INVESTMENT_OS_ENABLE_LIVE_DELIVERY=true`, and `INVESTMENT_OS_FEISHU_WEBHOOK_URL` from the environment. Do not set those gates during evaluation.
 
 ## Current gaps
 
-- Live official-source reliability varies and is not proven by the offline fixture.
+- Live official-source reliability varies and is not proven by the synthetic fixture.
 - China official-source coverage is incomplete; AKShare and Tushare remain convenience/secondary adapters.
-- Official Federal Reserve and U.S. Treasury endpoints remain source-check targets until stable retrieval paths are verified.
-- Automated delivery and scheduling remain intentionally disabled pending human evaluation.
+- Official Federal Reserve and U.S. Treasury endpoints remain source-check targets where stable retrieval is unresolved.
+- No scheduler is implemented or enabled.
+- Live Feishu delivery has unit coverage with injected transports but has not been exercised against a real endpoint.
