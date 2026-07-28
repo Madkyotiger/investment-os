@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+import investment_os.daily_runner as daily_runner
 from investment_os.daily_runner import DailyRunError, run_daily
 from investment_os.hard_source_collectors import HardSourceCandidate
 
@@ -138,3 +139,49 @@ def test_manifest_is_written_last_as_completed_run_receipt(tmp_path: Path):
         artifact = result.manifest_path.parent / name
         assert artifact.exists()
         assert _sha256(artifact) == metadata["sha256"]
+
+
+def test_manifest_write_failure_never_advances_durable_topic_state(monkeypatch, tmp_path: Path):
+    state_path = tmp_path / "topic-state.json"
+    out_dir = tmp_path / "failed-run"
+    original_write_json = daily_runner._write_json
+
+    def fail_manifest(path: Path, payload: object) -> None:
+        if path.name == "manifest.json":
+            raise OSError("injected manifest write failure")
+        original_write_json(path, payload)
+
+    monkeypatch.setattr(daily_runner, "_write_json", fail_manifest)
+    with pytest.raises(OSError, match="injected manifest write failure"):
+        run_daily(WATCHLIST, PROFILE, state_path, out_dir, offline=True)
+
+    assert not state_path.exists()
+    assert not (out_dir / "manifest.json").exists()
+
+    monkeypatch.setattr(daily_runner, "_write_json", original_write_json)
+    recovered = run_daily(WATCHLIST, PROFILE, state_path, tmp_path / "recovered-run", offline=True)
+    assert recovered.status == "completed"
+
+
+def test_completed_receipt_recovers_state_commit_interrupted_after_manifest(monkeypatch, tmp_path: Path):
+    state_path = tmp_path / "topic-state.json"
+    original_atomic_write_bytes = daily_runner._atomic_write_bytes
+
+    def fail_durable_state(path: Path, content: bytes) -> None:
+        if path == state_path:
+            raise OSError("injected durable state failure")
+        original_atomic_write_bytes(path, content)
+
+    monkeypatch.setattr(daily_runner, "_atomic_write_bytes", fail_durable_state)
+    with pytest.raises(OSError, match="injected durable state failure"):
+        run_daily(WATCHLIST, PROFILE, state_path, tmp_path / "receipt-complete", offline=True)
+
+    assert not state_path.exists()
+    assert (tmp_path / "receipt-complete" / "manifest.json").exists()
+    assert (tmp_path / ".topic-state.json.pending.json").exists()
+
+    monkeypatch.setattr(daily_runner, "_atomic_write_bytes", original_atomic_write_bytes)
+    next_run = run_daily(WATCHLIST, PROFILE, state_path, tmp_path / "after-recovery", offline=True)
+    assert next_run.status == "quiet"
+    assert state_path.exists()
+    assert not (tmp_path / ".topic-state.json.pending.json").exists()

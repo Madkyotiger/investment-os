@@ -58,6 +58,18 @@ def _atomic_write(path: Path, content: str) -> None:
             os.unlink(temporary)
 
 
+def _atomic_write_bytes(path: Path, content: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(content)
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
 def _write_json(path: Path, payload: object) -> None:
     _atomic_write(path, json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
 
@@ -167,6 +179,47 @@ def _prepare_state_copy(state_path: Path, work_dir: Path) -> Path:
     return temporary_state
 
 
+def _state_journal_path(state_path: Path) -> Path:
+    return state_path.with_name(f".{state_path.name}.pending.json")
+
+
+def _commit_pending_state(state_path: Path, journal_path: Path) -> None:
+    try:
+        journal = json.loads(journal_path.read_text(encoding="utf-8"))
+        manifest_path = Path(str(journal["manifest_path"]))
+        staged_state_path = Path(str(journal["staged_state_path"]))
+        expected_hash = str(journal["state_sha256"])
+    except (OSError, KeyError, TypeError, json.JSONDecodeError) as error:
+        raise DailyRunError("pending topic-state commit journal is invalid") from error
+
+    if not manifest_path.is_file():
+        journal_path.unlink(missing_ok=True)
+        return
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise DailyRunError("pending topic-state manifest is invalid") from error
+    if manifest.get("run_complete") is not True:
+        raise DailyRunError("pending topic-state manifest is not a completed run receipt")
+    artifact = (manifest.get("artifacts") or {}).get(staged_state_path.name)
+    if not isinstance(artifact, dict) or str(artifact.get("sha256", "")) != expected_hash:
+        raise DailyRunError("pending topic-state receipt does not match staged state")
+    try:
+        state_bytes = staged_state_path.read_bytes()
+    except OSError as error:
+        raise DailyRunError("pending topic-state artifact is unavailable") from error
+    if _sha256_bytes(state_bytes) != expected_hash:
+        raise DailyRunError("pending topic-state artifact hash mismatch")
+    _atomic_write_bytes(state_path, state_bytes)
+    journal_path.unlink(missing_ok=True)
+
+
+def _recover_pending_state(state_path: Path) -> None:
+    journal_path = _state_journal_path(state_path)
+    if journal_path.exists():
+        _commit_pending_state(state_path, journal_path)
+
+
 def _source_successes(candidates: Sequence[SourceCandidate]) -> list[dict[str, str]]:
     successes: dict[str, dict[str, str]] = {}
     for candidate in candidates:
@@ -211,6 +264,8 @@ def run_daily(
 ) -> DailyRunResult:
     """Collect, validate, update durable topic state, and write one completed local run."""
     _validate_inputs(watchlist_path, profile_path)
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    _recover_pending_state(state_path)
     generated_at, candidates, source_errors, input_hash = _collect(watchlist_path, offline=offline)
     blocked = [candidate for candidate in candidates if not is_promotable(candidate.to_row())]
     source_successes = _source_successes(candidates)
@@ -218,7 +273,6 @@ def run_daily(
         raise DailyRunError("strict live run failed: no usable live source succeeded")
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    state_path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="investment-os-daily-", dir=state_path.parent) as temporary:
         work_dir = Path(temporary)
         temporary_state = _prepare_state_copy(state_path, work_dir)
@@ -245,6 +299,7 @@ def run_daily(
         topic_changes_path = out_dir / "topic_changes.json"
         topic_changes_csv_path = out_dir / "topic_changes.csv"
         delivery_preview_path = out_dir / "delivery_preview.json"
+        staged_state_path = out_dir / "topic_state.next.json"
         manifest_path = out_dir / "manifest.json"
 
         _atomic_write(brief_path, brief)
@@ -291,9 +346,7 @@ def run_daily(
             },
         )
         _write_source_cache(out_dir, candidates, generated_at)
-
-        os.replace(temporary_state, state_path)
-        topic_state_path = state_path
+        _atomic_write_bytes(staged_state_path, temporary_state.read_bytes())
         artifacts = {
             path.name: _artifact_metadata(path)
             for path in (
@@ -304,8 +357,18 @@ def run_daily(
                 topic_changes_path,
                 topic_changes_csv_path,
                 delivery_preview_path,
+                staged_state_path,
             )
         }
+        journal_path = _state_journal_path(state_path)
+        _write_json(
+            journal_path,
+            {
+                "manifest_path": str(manifest_path.resolve()),
+                "staged_state_path": str(staged_state_path.resolve()),
+                "state_sha256": str(artifacts[staged_state_path.name]["sha256"]),
+            },
+        )
         _write_json(
             manifest_path,
             {
@@ -328,6 +391,8 @@ def run_daily(
                 "artifacts": artifacts,
             },
         )
+        _commit_pending_state(state_path, journal_path)
+        topic_state_path = state_path
 
     return DailyRunResult(
         status=status,
