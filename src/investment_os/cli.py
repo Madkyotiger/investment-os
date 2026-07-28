@@ -14,6 +14,7 @@ import pandas as pd
 from . import __version__
 from .cxo_intelligence import CXOProfile, build_cxo_brief_items, write_cxo_outputs
 from .daily_runner import DailyRunError, run_daily
+from .delivery import DeliveryError, deliver_brief
 from .pipeline import SymbolConfig, analyze_history, metrics_to_csv, render_report, run as run_pipeline
 from .source_universe_intake import SourceCandidate
 
@@ -203,6 +204,13 @@ def main(argv: list[str] | None = None) -> int:
     daily.add_argument("--strict", action="store_true", help="In live mode, fail if every usable source fails.")
     daily.add_argument("--offline", action="store_true", help="Use the deterministic bundled synthetic fixture.")
 
+    deliver = subparsers.add_parser("deliver", help="Preview or explicitly deliver a completed brief.")
+    deliver.add_argument("--brief", type=Path, required=True)
+    deliver.add_argument("--channel", choices=("feishu",), required=True)
+    delivery_mode = deliver.add_mutually_exclusive_group()
+    delivery_mode.add_argument("--dry-run", action="store_true", help="Write a local payload preview only (default).")
+    delivery_mode.add_argument("--confirm-send", action="store_true", help="Request live send; environment gate is also required.")
+
     args = parser.parse_args(argv)
     if args.command == "doctor":
         return run_doctor()
@@ -227,6 +235,21 @@ def main(argv: list[str] | None = None) -> int:
         print("delivery=not_requested")
         print(f"brief={result.brief_path}")
         print(f"manifest={result.manifest_path}")
+        return 0
+    if args.command == "deliver":
+        try:
+            result = deliver_brief(
+                args.brief,
+                channel=args.channel,
+                dry_run=not args.confirm_send,
+                confirm_send=args.confirm_send,
+            )
+        except DeliveryError as error:
+            print(f"delivery=fail reason={error}", file=sys.stderr)
+            return 2
+        print(f"delivery={result.status}")
+        print(f"sent={str(result.sent).lower()}")
+        print(f"preview={result.preview_path}")
         return 0
     parser.error(f"unknown command: {args.command}")
     return 2
