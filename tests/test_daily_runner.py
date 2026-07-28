@@ -7,83 +7,134 @@ from pathlib import Path
 import pytest
 
 from investment_os.daily_runner import DailyRunError, run_daily
+from investment_os.hard_source_collectors import HardSourceCandidate
 
 
-CONFIG = Path("configs/daily_brief.sample.yaml")
+WATCHLIST = Path("configs/watchlist.sample.yaml")
+PROFILE = Path("configs/profiles.sample.yaml")
 
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def test_offline_daily_run_writes_auditable_artifacts_and_is_idempotent(tmp_path: Path):
-    first = run_daily(CONFIG, tmp_path)
-    first_hash = _sha256(first.brief_path)
-    first_manifest = json.loads(first.manifest_path.read_text(encoding="utf-8"))
-
-    second = run_daily(CONFIG, tmp_path)
-    second_hash = _sha256(second.brief_path)
-    second_state = json.loads(second.run_state_path.read_text(encoding="utf-8"))
-    second_manifest = json.loads(second.manifest_path.read_text(encoding="utf-8"))
-
-    assert first_hash == second_hash
-    assert second_state["input_status"] == "unchanged"
-    assert second_state["meaningful_changes"] == 0
-    assert first_manifest["delivery_mode"] == "dry-run"
-    assert first_manifest["promoted_items"] == 2
-    assert first_manifest["blocked_items"] == 2
-    for name, metadata in second_manifest["artifacts"].items():
-        path = tmp_path / name
-        assert path.exists()
-        assert _sha256(path) == metadata["sha256"]
-    assert len(list((tmp_path / "cache" / "source-records").glob("*.json"))) == 4
-
-
-def test_daily_run_excludes_targets_metadata_and_stale_items(tmp_path: Path):
-    result = run_daily(CONFIG, tmp_path)
-    brief = result.brief_path.read_text(encoding="utf-8")
-    receipt = json.loads(result.source_receipt_path.read_text(encoding="utf-8"))
-
-    assert "ACME 发布季度一手文件" in brief
-    assert "示例市场广度出现变化" in brief
-    assert "美联储官方资料目标" not in brief
-    assert "过期元数据" not in brief
-    assert all(row["source_url"] and row["evidence_status"] for row in receipt)
-
-
-def test_strict_mode_fails_on_blocked_or_incomplete_evidence(tmp_path: Path):
-    with pytest.raises(DailyRunError, match="strict evidence gate"):
-        run_daily(CONFIG, tmp_path, strict=True)
-
-
-def test_manifest_reports_structured_source_failures(tmp_path: Path):
-    raw = json.loads(Path("tests/fixtures/daily_brief_sources.json").read_text(encoding="utf-8"))
-    raw["source_errors"] = [
-        {
-            "code": "timeout",
-            "source": "synthetic-official-source",
-            "retryable": True,
-            "message": "request timed out",
-        }
-    ]
-    fixture = tmp_path / "failure-fixture.json"
-    fixture.write_text(json.dumps(raw), encoding="utf-8")
-    config = tmp_path / "daily.yaml"
-    config.write_text(
-        "\n".join(
-            [
-                f"profile_config: {Path('configs/profiles.sample.yaml').resolve()}",
-                "profile_id: founder_operator",
-                f"input_fixture: {fixture}",
-                "delivery_mode: dry-run",
-            ]
-        ),
-        encoding="utf-8",
+def _run(tmp_path: Path, name: str, **kwargs):
+    return run_daily(
+        WATCHLIST,
+        PROFILE,
+        tmp_path / "topic-state.json",
+        tmp_path / name,
+        offline=True,
+        **kwargs,
     )
 
-    result = run_daily(config, tmp_path / "out")
-    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
-    failures = json.loads(result.source_errors_path.read_text(encoding="utf-8"))
 
+def test_offline_daily_run_is_deterministic_and_second_run_is_quiet(tmp_path: Path):
+    first = _run(tmp_path, "run-1")
+    second = _run(tmp_path, "run-2")
+
+    first_manifest = json.loads(first.manifest_path.read_text(encoding="utf-8"))
+    second_manifest = json.loads(second.manifest_path.read_text(encoding="utf-8"))
+    second_state = json.loads(second.run_state_path.read_text(encoding="utf-8"))
+
+    assert first.status == "completed"
+    assert first_manifest["result"] == "completed"
+    assert first_manifest["promoted_items"] == 2
+    assert second.status == "quiet"
+    assert second_manifest["result"] == "quiet"
+    assert second_manifest["promoted_items"] == 0
+    assert second_state["promoted_item_ids"] == []
+    assert "没有足够强的变化值得推送" in second.brief_path.read_text(encoding="utf-8")
+
+
+def test_offline_runs_from_fresh_state_have_identical_artifacts(tmp_path: Path):
+    first = run_daily(WATCHLIST, PROFILE, tmp_path / "state-a.json", tmp_path / "a", offline=True)
+    second = run_daily(WATCHLIST, PROFILE, tmp_path / "state-b.json", tmp_path / "b", offline=True)
+
+    assert _sha256(first.brief_path) == _sha256(second.brief_path)
+    assert _sha256(first.source_receipt_path) == _sha256(second.source_receipt_path)
+
+
+def test_offline_strict_does_not_fail_on_blocked_candidates(tmp_path: Path):
+    result = _run(tmp_path, "strict-offline", strict=True)
+
+    assert result.status == "completed"
+
+
+def test_live_strict_passes_when_one_usable_source_succeeds(monkeypatch, tmp_path: Path):
+    candidates = [
+        HardSourceCandidate(
+            item_id="macro:usable",
+            lane="macro_regime",
+            title="Usable official observation",
+            summary="A fetched official observation changed.",
+            source="FRED",
+            source_type="primary_macro_fred_yields_live",
+            source_url="https://fred.example/series",
+            as_of_date="2026-07-28",
+            retrieved_at="2026-07-28T00:00:00+00:00",
+            content_hash="sha256:usable",
+            evidence_status="single_source_data",
+        ),
+        HardSourceCandidate(
+            item_id="macro:target",
+            lane="macro_regime",
+            title="Blocked target",
+            summary="No observation fetched.",
+            source="Federal Reserve",
+            source_type="primary_macro_calendar",
+            source_url="https://fed.example/calendar",
+            as_of_date="2026-07-28",
+        ),
+    ]
+    monkeypatch.setattr("investment_os.daily_runner.collect_hard_source_candidates", lambda *_args, **_kwargs: candidates)
+    monkeypatch.setattr(
+        "investment_os.daily_runner.get_last_source_errors",
+        lambda: [{"source": "SEC", "code": "blocked", "message": "blocked candidate"}],
+    )
+
+    result = run_daily(WATCHLIST, PROFILE, tmp_path / "state.json", tmp_path / "live", strict=True)
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+
+    assert manifest["usable_live_sources"] == 1
+    assert manifest["blocked_items"] == 1
     assert manifest["source_failure_count"] == 1
-    assert failures[0]["code"] == "timeout"
+
+
+def test_live_strict_fails_only_when_every_usable_source_fails(monkeypatch, tmp_path: Path):
+    candidates = [
+        HardSourceCandidate(
+            item_id="macro:target",
+            lane="macro_regime",
+            title="Blocked target",
+            summary="No observation fetched.",
+            source="Federal Reserve",
+            source_type="primary_macro_calendar",
+            source_url="https://fed.example/calendar",
+            as_of_date="2026-07-28",
+        )
+    ]
+    monkeypatch.setattr("investment_os.daily_runner.collect_hard_source_candidates", lambda *_args, **_kwargs: candidates)
+    monkeypatch.setattr(
+        "investment_os.daily_runner.get_last_source_errors",
+        lambda: [{"source": "FRED", "code": "timeout", "message": "request timed out"}],
+    )
+
+    with pytest.raises(DailyRunError, match="no usable live source succeeded"):
+        run_daily(WATCHLIST, PROFILE, tmp_path / "state.json", tmp_path / "live", strict=True)
+
+
+def test_manifest_is_written_last_as_completed_run_receipt(tmp_path: Path):
+    result = _run(tmp_path, "manifest")
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+
+    assert manifest["schema_version"] == 1
+    assert manifest["run_complete"] is True
+    assert manifest["mode"] == "offline"
+    assert manifest["watchlist"] == str(WATCHLIST)
+    assert manifest["profile"] == str(PROFILE)
+    assert manifest["topic_state"] == str(tmp_path / "topic-state.json")
+    for name, metadata in manifest["artifacts"].items():
+        artifact = result.manifest_path.parent / name
+        assert artifact.exists()
+        assert _sha256(artifact) == metadata["sha256"]

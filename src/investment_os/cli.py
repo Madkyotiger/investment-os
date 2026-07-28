@@ -195,10 +195,13 @@ def main(argv: list[str] | None = None) -> int:
     live.add_argument("--out", type=Path, required=True)
     live.add_argument("--strict", action="store_true", help="Exit 2 if no symbol has usable data.")
 
-    daily = subparsers.add_parser("daily", help="Run the auditable offline daily brief workflow.")
-    daily.add_argument("--config", type=Path, default=Path("configs/daily_brief.sample.yaml"))
+    daily = subparsers.add_parser("daily", help="Collect, validate, update state, and write a local daily brief.")
+    daily.add_argument("--config", type=Path, required=True, help="Watchlist YAML path.")
+    daily.add_argument("--profile", type=Path, required=True, help="Reader profile YAML path.")
+    daily.add_argument("--state", type=Path, required=True, help="Durable topic-state JSON path.")
     daily.add_argument("--out", type=Path, required=True)
-    daily.add_argument("--strict", action="store_true", help="Fail closed if any fixture evidence is blocked.")
+    daily.add_argument("--strict", action="store_true", help="In live mode, fail if every usable source fails.")
+    daily.add_argument("--offline", action="store_true", help="Use the deterministic bundled synthetic fixture.")
 
     args = parser.parse_args(argv)
     if args.command == "doctor":
@@ -209,12 +212,19 @@ def main(argv: list[str] | None = None) -> int:
         return run_live(args.config, args.out, args.strict)
     if args.command == "daily":
         try:
-            result = run_daily(args.config, args.out, strict=args.strict)
+            result = run_daily(
+                args.config,
+                args.profile,
+                args.state,
+                args.out,
+                strict=args.strict,
+                offline=args.offline,
+            )
         except DailyRunError as error:
             print(f"daily_run=fail reason={error}", file=sys.stderr)
             return 2
-        print("daily_run=pass")
-        print("delivery_mode=dry-run")
+        print(f"daily_run={result.status}")
+        print("delivery=not_requested")
         print(f"brief={result.brief_path}")
         print(f"manifest={result.manifest_path}")
         return 0

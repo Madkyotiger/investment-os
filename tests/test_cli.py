@@ -35,27 +35,26 @@ def test_strict_live_run_fails_when_every_row_is_degraded(monkeypatch, tmp_path)
     assert main(["run", "--config", "unused.yaml", "--out", str(tmp_path / "live"), "--strict"]) == 2
 
 
-def test_daily_command_runs_offline_and_keeps_delivery_dry_run(tmp_path):
-    out = tmp_path / "daily"
-
-    assert main([
+def test_daily_command_supports_exact_offline_contract_and_reports_quiet(tmp_path, capsys):
+    state = tmp_path / "topic-state.json"
+    command = [
         "daily",
         "--config",
-        "configs/daily_brief.sample.yaml",
+        "configs/watchlist.sample.yaml",
+        "--profile",
+        "configs/profiles.sample.yaml",
+        "--state",
+        str(state),
         "--out",
-        str(out),
-    ]) == 0
-
-    assert (out / "brief.md").exists()
-    assert '"live_delivery_enabled": false' in (out / "delivery_preview.json").read_text(encoding="utf-8")
-
-
-def test_daily_strict_mode_returns_nonzero_for_blocked_fixture(tmp_path):
-    assert main([
-        "daily",
-        "--config",
-        "configs/daily_brief.sample.yaml",
-        "--out",
-        str(tmp_path / "strict"),
+        str(tmp_path / "run-1"),
         "--strict",
-    ]) == 2
+        "--offline",
+    ]
+
+    assert main(command) == 0
+    first_output = capsys.readouterr().out
+    assert "daily_run=completed" in first_output
+    assert (tmp_path / "run-1" / "cxo_daily_brief.md").exists()
+    command[command.index(str(tmp_path / "run-1"))] = str(tmp_path / "run-2")
+    assert main(command) == 0
+    assert "daily_run=quiet" in capsys.readouterr().out
