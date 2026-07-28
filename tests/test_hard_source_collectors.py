@@ -48,6 +48,29 @@ def test_fred_live_candidate_uses_verified_data_when_available(monkeypatch):
     assert "10Y-2Y spread" in candidates[0].summary
 
 
+def test_fred_live_candidate_applies_yaml_stale_threshold_to_observation_dates(monkeypatch):
+    monkeypatch.setattr(
+        "investment_os.hard_source_collectors._fred_latest",
+        lambda _series_id: ("2026-07-01", 4.0),
+    )
+
+    candidate = collect_fred_yield_candidates(datetime(2026, 7, 10, tzinfo=timezone.utc))[0]
+
+    assert candidate.freshness_status == "stale"
+    assert candidate.evidence_status == "stale"
+
+
+def test_fred_live_candidate_treats_threshold_boundary_as_current(monkeypatch):
+    monkeypatch.setattr(
+        "investment_os.hard_source_collectors._fred_latest",
+        lambda _series_id: ("2026-07-05", 4.0),
+    )
+
+    candidate = collect_fred_yield_candidates(datetime(2026, 7, 10, tzinfo=timezone.utc))[0]
+
+    assert candidate.freshness_status == "current"
+
+
 def test_market_move_candidate_can_be_built_from_snapshot(monkeypatch):
     def fake_snapshot(symbols: list[str]):
         return {

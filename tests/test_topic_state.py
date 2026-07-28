@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from pathlib import Path
 
+from investment_os.judgment_kernel import evidence_fingerprint
 from investment_os.source_universe_intake import SourceCandidate, write_candidates
 from investment_os.topic_state import render_change_digest, update_topic_state
 
@@ -29,6 +30,7 @@ def _candidate(**overrides) -> SourceCandidate:
         "counter_explanation": "The change may be temporary mix rather than structural deterioration.",
         "next_primary_source": "Latest earnings call transcript and next 10-Q.",
         "evidence_status": "primary_read",
+        "content_hash": "sha256:filing-v1",
         "geography": "US",
     }
     data.update(overrides)
@@ -273,6 +275,37 @@ def test_same_source_with_new_evidence_digest_can_update_without_url_churn(tmp_p
 
     assert changes[0].change_type == "hypothesis_weakened"
     assert changes[0].changed_since_last_push is True
+
+
+def test_same_date_body_revision_changes_evidence_fingerprint(tmp_path):
+    candidates_csv = _write(tmp_path, [_candidate()])
+    state_path = tmp_path / "topic_state.json"
+    update_topic_state(candidates_csv, state_path, tmp_path / "state", generated_at=NOW)
+
+    revised = _candidate(
+        summary="The source body was revised on the same date with a changed margin fact.",
+        content_hash="sha256:filing-v2",
+    )
+    candidates_csv = _write(tmp_path, [revised])
+    changes, _, _ = update_topic_state(candidates_csv, state_path, tmp_path / "state", generated_at=NOW)
+
+    assert changes[0].change_type == "hypothesis_weakened"
+    assert changes[0].changed_since_last_push is True
+
+
+def test_observed_value_revision_changes_fingerprint_but_unchanged_value_is_idempotent():
+    row = {
+        "item_id": "macro:test",
+        "source": "FRED",
+        "source_type": "primary_macro_fred_yields_live",
+        "source_url": "https://fred.example/series",
+        "as_of_date": "2026-07-10",
+        "evidence_status": "single_source_data",
+        "observed_value": "4.25",
+    }
+
+    assert evidence_fingerprint(row) == evidence_fingerprint(dict(row))
+    assert evidence_fingerprint(row) != evidence_fingerprint({**row, "observed_value": "4.30"})
 
 
 def test_metadata_interlude_does_not_erase_last_meaningful_evidence(tmp_path):

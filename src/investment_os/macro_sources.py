@@ -63,6 +63,18 @@ def _valid_rows(series_id: str, text: str) -> list[tuple[str, float]]:
     return rows
 
 
+def observation_freshness(
+    observation_date: str,
+    retrieved_at: datetime,
+    definition: MacroSeriesDefinition,
+) -> str:
+    try:
+        age_days = (retrieved_at.date() - date.fromisoformat(observation_date)).days
+    except ValueError:
+        return "stale"
+    return "current" if 0 <= age_days <= definition.stale_after_days else "stale"
+
+
 def parse_latest_observation(
     series_id: str,
     text: str,
@@ -75,11 +87,7 @@ def parse_latest_observation(
     definition = definition or MacroSeriesDefinition(series_id, series_id, "unknown", 0, "unknown")
     observation_date, level = rows[-1]
     change = level - rows[-2][1] if len(rows) >= 2 else None
-    try:
-        age_days = (retrieved_at.date() - date.fromisoformat(observation_date)).days
-    except ValueError:
-        age_days = definition.stale_after_days + 1
-    freshness_status = "current" if 0 <= age_days <= definition.stale_after_days else "stale"
+    freshness_status = observation_freshness(observation_date, retrieved_at, definition)
     return MacroObservation(
         series_id=series_id,
         label=definition.label,

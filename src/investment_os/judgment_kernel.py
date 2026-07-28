@@ -179,6 +179,8 @@ def evidence_fingerprint(row: Mapping[str, object]) -> str:
         "evidence_status": _text(enriched, "evidence_status"),
         "thesis_impact": _text(enriched, "thesis_impact"),
         "evidence_digest": _text(enriched, "evidence_digest"),
+        "content_hash": _text(enriched, "content_hash"),
+        "observed_value": _text(enriched, "observed_value"),
         "cannot_prove": _text(enriched, "cannot_prove"),
         "next_primary_source": _text(enriched, "next_primary_source"),
     }

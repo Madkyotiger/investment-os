@@ -125,6 +125,30 @@ def test_live_strict_fails_only_when_every_usable_source_fails(monkeypatch, tmp_
         run_daily(WATCHLIST, PROFILE, tmp_path / "state.json", tmp_path / "live", strict=True)
 
 
+def test_live_strict_rejects_successful_but_stale_observations(monkeypatch, tmp_path: Path):
+    candidates = [
+        HardSourceCandidate(
+            item_id="macro:stale",
+            lane="macro_regime",
+            title="Old official observation",
+            summary="The fetch succeeded but the observation is outside its cadence window.",
+            source="FRED",
+            source_type="primary_macro_fred_yields_live",
+            source_url="https://fred.example/series",
+            as_of_date="2025-01-01",
+            retrieved_at="2026-07-28T00:00:00+00:00",
+            content_hash="sha256:stale",
+            freshness_status="stale",
+            evidence_status="single_source_data",
+        )
+    ]
+    monkeypatch.setattr("investment_os.daily_runner.collect_hard_source_candidates", lambda *_args, **_kwargs: candidates)
+    monkeypatch.setattr("investment_os.daily_runner.get_last_source_errors", lambda: [])
+
+    with pytest.raises(DailyRunError, match="no usable live source succeeded"):
+        run_daily(WATCHLIST, PROFILE, tmp_path / "state.json", tmp_path / "live", strict=True)
+
+
 def test_manifest_is_written_last_as_completed_run_receipt(tmp_path: Path):
     result = _run(tmp_path, "manifest")
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))

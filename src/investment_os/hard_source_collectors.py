@@ -13,7 +13,7 @@ import yaml
 
 from .evidence_contract import infer_body_read_status, normalize_evidence_status
 from .http_client import HttpClient, HttpRequestError
-from .macro_sources import load_macro_series
+from .macro_sources import load_macro_series, observation_freshness
 
 
 _HTTP_CLIENT = HttpClient()
@@ -329,6 +329,17 @@ def collect_fred_yield_candidates(generated_at: datetime) -> list[HardSourceCand
     if "DGS2" in latest and "DGS10" in latest:
         curve_note = f"; 10Y-2Y spread {(latest['DGS10'][1] - latest['DGS2'][1]):.2f}pp"
     as_of = max(date for date, _ in latest.values())
+    freshness_status = (
+        "stale"
+        if any(
+            observation_freshness(observation_date, generated_at, definitions[series_id]) == "stale"
+            for series_id, (observation_date, _value) in latest.items()
+        )
+        else "current"
+    )
+    content_hash = "sha256:" + hashlib.sha256(
+        json.dumps(latest, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
     return [HardSourceCandidate(
         item_id="primary_macro:fred_yield_curve_live",
         lane="macro_regime",
@@ -340,11 +351,13 @@ def collect_fred_yield_candidates(generated_at: datetime) -> list[HardSourceCand
         tickers="TLT,SPY,QQQ,IWM",
         themes="rates,duration,financing_cost",
         source_url="https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS2,DGS10,DGS30",
-        source_authority=5, freshness=5, evidence_change=4, magnitude=4, novelty=3, decision_usefulness=5, portfolio_relevance=4,
+        source_authority=5, freshness=1 if freshness_status == "stale" else 5, evidence_change=4, magnitude=4, novelty=3, decision_usefulness=5, portfolio_relevance=4,
         confidence="verified_data",
         next_check="Compare yield move with TLT/QQQ/IWM and earnings multiple compression before explaining equity moves.",
         kill_signal="If FRED values are stale or market proxies disagree, keep rates as background rather than causal explanation.",
         cannot_prove="Yield levels alone do not prove equity direction or sector causality.",
+        content_hash=content_hash,
+        freshness_status=freshness_status,
     )]
 
 
