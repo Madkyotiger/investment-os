@@ -30,6 +30,19 @@ Expected result:
 
 The offline demo uses deterministic synthetic prices and synthetic source candidates. It checks the software path, not the current market.
 
+Run the exact daily path with explicit, separate state:
+
+```bash
+uv run investment-os daily \
+  --config configs/watchlist.sample.yaml \
+  --profile configs/profiles.sample.yaml \
+  --state .local/agent-state.json \
+  --out .local/agent-run \
+  --offline
+```
+
+The completed `manifest.json` and its artifact hashes are the handoff boundary. Channel selection and message delivery belong to the downstream runtime.
+
 ## Optional live market test
 
 Use an isolated environment so optional market packages do not remain in the project `.venv`:
@@ -61,4 +74,4 @@ cd ..
 rm -rf investment-os
 ```
 
-Removing the checkout removes the project environment and generated output. This repository does not install services or scheduled jobs.
+Removing the checkout removes the project environment and generated output. This repository does not install services, scheduled jobs, or messaging integrations.

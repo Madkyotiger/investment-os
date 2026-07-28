@@ -7,20 +7,22 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Mapping, Sequence
 
+from .evidence_contract import normalize_evidence_status
+
 
 MEANINGFUL_IMPACTS = {"strengthened", "weakened", "unknown_narrowed", "unknown_expanded"}
 METADATA_SOURCE_TYPES = {"primary_sec_recent_filing", "primary_sec_identity"}
 BACKGROUND_SOURCE_TYPES = {"primary_macro_calendar", "primary_macro_rates", "watchlist_config"}
 EVIDENCE_STATUS_RANK = {
-    "primary_read": 6,
-    "primary_data": 5,
+    "primary_body_read": 6,
     "cross_checked_data": 4,
     "single_source_data": 3,
-    "secondary_cross_check": 3,
+    "primary_body_retrieved": 2,
     "primary_metadata_only": 2,
     "source_target_only": 1,
-    "config_only": 0,
-    "unknown": 0,
+    "mixed_sources": 1,
+    "stale": 0,
+    "unavailable": 0,
 }
 
 
@@ -46,6 +48,8 @@ def infer_topic_key(row: Mapping[str, object]) -> str:
     tickers = _text(row, "tickers")
     lane = _text(row, "lane")
 
+    if source_type == "primary_macro_fred_live":
+        return f"macro:{item_id.rsplit(':', 1)[-1].lower()}"
     if source_type in {"primary_macro_fred_yields_live", "primary_macro_rates"} or "yield_curve" in item_id:
         return "macro:rates-duration"
     if source_type == "primary_macro_calendar" or "fed_calendar" in item_id:
@@ -85,32 +89,7 @@ def infer_geography(row: Mapping[str, object]) -> str:
 
 
 def infer_evidence_status(row: Mapping[str, object]) -> str:
-    explicit = _text(row, "evidence_status")
-    source_type = _text(row, "source_type")
-    source = _text(row, "source").lower()
-    confidence = _text(row, "confidence").lower()
-    market_source = source_type in {"market_proxy_prices_live", "market_data", "china_market_data_single_source"}
-    if market_source:
-        return "cross_checked_data" if confidence == "market_data_cross_checked" else "single_source_data"
-    if explicit:
-        return explicit
-    if source_type in METADATA_SOURCE_TYPES:
-        return "primary_metadata_only"
-    if source_type == "watchlist_config":
-        return "config_only"
-    if source_type in {"primary_macro_calendar", "primary_macro_rates"}:
-        return "source_target_only"
-    if source_type == "primary_macro_fred_yields_live":
-        return "primary_data"
-    if source_type == "primary_filing_body_read":
-        return "primary_read"
-    if source_type == "theme_evidence" and any(marker in source for marker in ("annual report", "sec filing", "年报", "ir day")):
-        return "primary_read"
-    if source_type == "company_financials":
-        return "secondary_cross_check"
-    if source_type.startswith("primary_"):
-        return "primary_data"
-    return "unknown"
+    return normalize_evidence_status(row)
 
 
 def infer_research_question(row: Mapping[str, object]) -> str:
@@ -121,7 +100,7 @@ def infer_research_question(row: Mapping[str, object]) -> str:
     ticker = _text(row, "tickers") or "该公司"
     if source_type == "primary_sec_recent_filing":
         return f"{ticker} 这份披露正文是否包含会改变经营、风险或资本配置判断的新事实？"
-    if source_type in {"primary_macro_fred_yields_live", "primary_macro_rates"}:
+    if source_type in {"primary_macro_fred_live", "primary_macro_fred_yields_live", "primary_macro_rates"}:
         return "利率变化是否得到美元、期限资产与成长板块相对表现的交叉确认？"
     if source_type in {"market_proxy_prices_live", "market_data"}:
         return "这次价格变化来自公司事实、行业 beta，还是资金与情绪？"
@@ -166,6 +145,55 @@ def enrich_candidate_row(row: Mapping[str, object]) -> dict[str, object]:
     return enriched
 
 
+def is_promotable(row: Mapping[str, object]) -> bool:
+    enriched = enrich_candidate_row(row)
+    evidence_status = _text(enriched, "evidence_status")
+    if evidence_status in {
+        "source_target_only",
+        "primary_metadata_only",
+        "primary_body_retrieved",
+        "mixed_sources",
+        "stale",
+        "unavailable",
+    }:
+        return False
+    required = (
+        "item_id", "lane", "title", "summary", "source", "source_type", "as_of_date",
+        "retrieved_at", "freshness_status", "freshness_threshold_days",
+        "counter_explanation", "next_primary_source", "kill_signal", "cannot_prove",
+    )
+    if any(not _text(row, field) for field in required):
+        return False
+    content_hash = _text(row, "content_hash")
+    evidence_digest = _text(row, "evidence_digest")
+    if not evidence_digest and not (content_hash.startswith("sha256:") and len(content_hash) > len("sha256:")):
+        return False
+    if not _text(row, "source_url").startswith(("https://", "http://")):
+        return False
+    if _text(row, "freshness_status").lower() not in {"current", "fresh"}:
+        return False
+    try:
+        retrieved_at = datetime.fromisoformat(_text(row, "retrieved_at").replace("Z", "+00:00"))
+        threshold = int(float(_text(row, "freshness_threshold_days")))
+    except ValueError:
+        return False
+    if retrieved_at.tzinfo is None:
+        return False
+    as_of_date = _parse_date(_text(row, "as_of_date"))
+    if as_of_date is None or threshold <= 0:
+        return False
+    age_days = (retrieved_at.date() - as_of_date).days
+    if age_days < 0 or age_days > threshold:
+        return False
+    if evidence_status == "primary_body_read":
+        return bool(
+            _text(enriched, "body_read_status") == "read"
+            and _text(enriched, "content_hash")
+            and _text(enriched, "source_url")
+        )
+    return True
+
+
 def evidence_fingerprint(row: Mapping[str, object]) -> str:
     enriched = enrich_candidate_row(row)
     payload = {
@@ -177,6 +205,10 @@ def evidence_fingerprint(row: Mapping[str, object]) -> str:
         "evidence_status": _text(enriched, "evidence_status"),
         "thesis_impact": _text(enriched, "thesis_impact"),
         "evidence_digest": _text(enriched, "evidence_digest"),
+        "content_hash": _text(enriched, "content_hash"),
+        "observed_value": _text(enriched, "observed_value"),
+        "freshness_status": _text(enriched, "freshness_status"),
+        "freshness_threshold_days": _text(enriched, "freshness_threshold_days"),
         "cannot_prove": _text(enriched, "cannot_prove"),
         "next_primary_source": _text(enriched, "next_primary_source"),
     }
@@ -192,11 +224,20 @@ def _parse_date(value: str) -> date | None:
 
 
 def is_fresh(row: Mapping[str, object], generated_at: datetime, max_age_days: int = 3) -> bool:
+    freshness_status = _text(row, "freshness_status").lower()
+    if freshness_status == "stale":
+        return False
+    try:
+        source_threshold = int(float(_text(row, "freshness_threshold_days")))
+    except ValueError:
+        source_threshold = max_age_days
+    if source_threshold <= 0:
+        return False
     source_date = _parse_date(_text(row, "as_of_date"))
     if source_date is None:
         return False
     age = (generated_at.date() - source_date).days
-    return 0 <= age <= max_age_days
+    return 0 <= age <= source_threshold
 
 
 def classify_change(
@@ -210,9 +251,17 @@ def classify_change(
     impact = _text(enriched, "thesis_impact") or "unknown"
     fingerprint = evidence_fingerprint(enriched)
 
-    if source_type in METADATA_SOURCE_TYPES or evidence_status == "primary_metadata_only":
-        return ChangeAssessment("metadata_only", False, "只有元数据，尚未读到可解释的正文事实", fingerprint)
-    if source_type in BACKGROUND_SOURCE_TYPES or evidence_status in {"source_target_only", "config_only"}:
+    if source_type in METADATA_SOURCE_TYPES or evidence_status in {
+        "primary_metadata_only",
+        "primary_body_retrieved",
+    }:
+        return ChangeAssessment("metadata_only", False, "只有元数据或正文获取回执，尚未读到可解释的正文事实", fingerprint)
+    if source_type in BACKGROUND_SOURCE_TYPES or evidence_status in {
+        "source_target_only",
+        "stale",
+        "unavailable",
+        "mixed_sources",
+    }:
         return ChangeAssessment("background_only", False, "来源目标或配置只构成背景，不构成判断变化", fingerprint)
     if not is_fresh(enriched, generated_at):
         return ChangeAssessment("background_only", False, "资料不在当前变化窗口内，只能作为研究背景", fingerprint)

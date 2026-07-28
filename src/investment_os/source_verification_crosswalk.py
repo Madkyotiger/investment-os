@@ -92,10 +92,23 @@ def _row_to_evidence_item(row: dict[str, str], source_path: Path) -> EvidenceIte
     expert_claim = _clean(row["expert_signal_claim"])
     cannot_prove = _clean(row["cannot_prove"])
     next_action = _clean(row["next_action"])
+    source_error = ""
+    if status != "ok":
+        source_error = json.dumps(
+            {
+                "code": "source_unavailable" if status == "missing" else "source_partial",
+                "message": cannot_prove or "Source verification did not complete.",
+                "source_url": _clean(row.get("source_url", "")),
+                "transient": False,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
     note = (
         f"Expert signal checked: {expert_claim}; "
         f"Evidence direction={direction}; Evidence strength={strength}; "
         f"Cannot prove: {cannot_prove}; Next action: {next_action}"
+        + (f"; Source error={source_error}" if source_error else "")
     )
     return EvidenceItem(
         symbol=_clean(row["expert_symbol"]),

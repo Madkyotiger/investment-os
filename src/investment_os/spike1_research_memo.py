@@ -27,6 +27,21 @@ class EvidenceItem:
     status: str
     url: str = ""
     note: str = ""
+    retrieved_at: str = ""
+    body_read_status: str = "not_read"
+    content_hash: str = ""
+    cannot_prove: str = ""
+    source_authority: str = "unknown"
+    underlying_endpoint: str = ""
+
+
+def can_generate_business_implication(item: EvidenceItem) -> bool:
+    return bool(
+        item.body_read_status == "read"
+        and item.url
+        and item.content_hash
+        and item.category not in {"filing", "filing_metadata"}
+    )
 
 
 @dataclass
@@ -310,6 +325,8 @@ def fetch_edgar_filing_evidence(symbol: str) -> tuple[list[EvidenceItem], list[s
                 status=status,
                 url=getattr(filing, "filing_url", "") or getattr(filing, "homepage_url", ""),
                 note=f"accession={getattr(filing, 'accession_no', '')}; primary_document={getattr(filing, 'primary_document', '')}",
+                body_read_status="metadata_only",
+                cannot_prove="Filing metadata proves only that a document exists; no business implication is supported.",
             ))
     except Exception as exc:
         gaps.append(f"edgartools adapter failed: {type(exc).__name__}: {exc}")

@@ -3,12 +3,14 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
 import yaml
+
+from .evidence_contract import infer_body_read_status
 
 
 
@@ -43,12 +45,25 @@ class SourceCandidate:
     evidence_status: str = ""
     geography: str = ""
     evidence_digest: str = ""
+    observed_value: str = ""
+    revision: float | None = None
+    retrieved_at: str = ""
+    body_read_status: str = ""
+    content_hash: str = ""
+    freshness_status: str = ""
+    freshness_threshold_days: int = 3
+    source_errors: list[dict[str, object]] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         from .judgment_kernel import enrich_candidate_row
 
+        if self.evidence_status == "primary_read" and not self.body_read_status:
+            self.body_read_status = "legacy_read"
+        self.body_read_status = infer_body_read_status(
+            self.source_type, self.content_hash, self.body_read_status
+        )
         enriched = enrich_candidate_row(asdict(self))
-        for field in (
+        for attribute in (
             "thesis_key",
             "research_question",
             "thesis_impact",
@@ -57,8 +72,10 @@ class SourceCandidate:
             "evidence_status",
             "geography",
         ):
-            if field == "evidence_status" or not getattr(self, field):
-                setattr(self, field, str(enriched[field]))
+            if attribute == "evidence_status" or not getattr(self, attribute):
+                setattr(self, attribute, str(enriched[attribute]))
+        if not self.freshness_status:
+            self.freshness_status = "stale" if self.evidence_status == "stale" else "current"
 
     @property
     def total_score(self) -> int:
@@ -323,6 +340,13 @@ def _hard_source_candidates(path: Path | None) -> list[SourceCandidate]:
                 kill_signal=row.get("kill_signal", ""),
                 cannot_prove=row.get("cannot_prove", ""),
                 evidence_digest=row.get("evidence_digest", ""),
+                observed_value=row.get("observed_value", ""),
+                revision=float(row["revision"]) if row.get("revision") not in {None, "", "None"} else None,
+                retrieved_at=row.get("retrieved_at", ""),
+                body_read_status=row.get("body_read_status", ""),
+                content_hash=row.get("content_hash", ""),
+                freshness_status=row.get("freshness_status", ""),
+                freshness_threshold_days=int(float(row.get("freshness_threshold_days") or 3)),
             )
         )
     return candidates

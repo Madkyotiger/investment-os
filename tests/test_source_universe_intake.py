@@ -8,6 +8,7 @@ from investment_os.source_universe_intake import (
     rank_with_coverage,
     write_candidates,
 )
+from investment_os.cxo_intelligence import build_cxo_brief_items, load_profile
 from investment_os.hard_source_collectors import collect_hard_source_candidates, write_hard_source_candidates
 
 LEDGER = Path("tests/fixtures/evidence_ledger.sample.csv")
@@ -121,3 +122,63 @@ def test_single_source_market_cannot_self_declare_cross_checked_status():
     )
 
     assert candidate.evidence_status == "single_source_data"
+
+
+def test_source_target_cannot_enter_reader_brief():
+    candidate = SourceCandidate(
+        item_id="primary_macro:treasury_target",
+        lane="macro_regime",
+        title="Treasury source target",
+        summary="A URL to inspect later.",
+        source="U.S. Treasury",
+        source_type="primary_macro_rates",
+        as_of_date="2026-07-10",
+        source_url="https://home.treasury.gov/interest-rates",
+        evidence_status="source_target_only",
+    )
+    items = build_cxo_brief_items([candidate], load_profile(Path("configs/profiles.sample.yaml")))
+    assert items == []
+
+
+def test_body_read_evidence_requires_url_and_non_empty_hash():
+    missing_hash = SourceCandidate(
+        item_id="filing:missing-hash",
+        lane="company_events",
+        title="Filing body",
+        summary="Body text was allegedly read.",
+        source="SEC",
+        source_type="primary_filing_body_read",
+        as_of_date="2026-07-10",
+        source_url="https://www.sec.gov/example.htm",
+        body_read_status="read",
+        evidence_status="primary_body_read",
+    )
+    valid = SourceCandidate(
+        item_id="filing:valid",
+        lane="company_events",
+        title="Filing body",
+        summary="Body text was read.",
+        source="SEC",
+        source_type="primary_filing_body_read",
+        as_of_date="2026-07-10",
+        source_url="https://www.sec.gov/example.htm",
+        body_read_status="read",
+        content_hash="sha256:abc123",
+        evidence_status="primary_body_read",
+    )
+    assert missing_hash.evidence_status == "primary_metadata_only"
+    assert valid.evidence_status == "primary_body_read"
+
+
+def test_missing_evidence_fields_fail_closed():
+    candidate = SourceCandidate(
+        item_id="unknown:evidence",
+        lane="company_events",
+        title="Unknown evidence",
+        summary="No provenance fields.",
+        source="",
+        source_type="",
+        as_of_date="",
+        confidence="verified",
+    )
+    assert candidate.evidence_status == "unavailable"

@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 import yaml
 
 from .pipeline import FORBIDDEN_DECISION_WORDS
+from .judgment_kernel import evidence_fingerprint, is_promotable
 from .source_universe_intake import SourceCandidate, rank_source_candidates
 from .topic_state import TopicChange, parse_generated_at
 from .us_china_pilot import scan_boundary, scan_external_note_quality
@@ -108,6 +109,12 @@ def _load_candidates(path: Path) -> list[SourceCandidate]:
                 evidence_status=row.get("evidence_status", ""),
                 geography=row.get("geography", ""),
                 evidence_digest=row.get("evidence_digest", ""),
+                observed_value=row.get("observed_value", ""),
+                retrieved_at=row.get("retrieved_at", ""),
+                body_read_status=row.get("body_read_status", ""),
+                content_hash=row.get("content_hash", ""),
+                freshness_status=row.get("freshness_status", ""),
+                freshness_threshold_days=int(float(row.get("freshness_threshold_days") or 0)),
             )
         )
     return candidates
@@ -158,18 +165,30 @@ def build_cxo_brief_items(
 
     items: list[CXOBriefItem] = []
     seen_theses: set[str] = set()
-    blocked_statuses = {"primary_metadata_only", "source_target_only", "config_only"}
+    seen_fingerprints: set[str] = set()
+    blocked_statuses = {
+        "primary_metadata_only",
+        "primary_body_retrieved",
+        "source_target_only",
+        "stale",
+        "unavailable",
+        "mixed_sources",
+    }
     for candidate in candidates:
-        if candidate.evidence_status in blocked_statuses:
+        if candidate.evidence_status in blocked_statuses or not is_promotable(candidate.to_row()):
             continue
         if meaningful_ids is not None and candidate.item_id not in meaningful_ids:
             continue
         if candidate.thesis_key in seen_theses:
             continue
+        fingerprint = evidence_fingerprint(candidate.to_row())
+        if fingerprint in seen_fingerprints:
+            continue
         relevance, reason = score_cxo_relevance(candidate, profile)
         if relevance <= 1 and candidate.decision_usefulness < 4:
             continue
         seen_theses.add(candidate.thesis_key)
+        seen_fingerprints.add(fingerprint)
         items.append(CXOBriefItem(candidate=candidate, cxo_relevance=relevance, cxo_reason=reason))
     return sorted(
         items,
@@ -181,7 +200,7 @@ def build_cxo_brief_items(
             item.candidate.portfolio_relevance,
         ),
         reverse=True,
-    )[:max_items]
+    )[: min(max_items, 5)]
 
 
 def render_coverage_receipt(
@@ -233,6 +252,7 @@ TITLE_REPLACEMENTS = {
     "Market proxy move is led by": "市场代理资产今日波动领头的是",
     "one-day change": "单日变化",
     "latest SEC filing is": "最新 SEC filing 是",
+    "primary filing body was retrieved": "一手 filing 正文已取得",
     "watchlist is active for CXO relevance routing": "观察名单已进入 CXO 相关性路由",
 }
 
@@ -269,6 +289,9 @@ TEXT_REPLACEMENTS = {
     "The Fed meeting calendar is the official source for upcoming policy dates; use it before interpreting rate-sensitive equity moves": "Fed 会议日程是政策日期的一手来源；解释利率敏感资产前先看它",
     "Fetch the next FOMC date, statement, minutes and dot-plot changes before writing rate-path conclusions": "先抓下一次 FOMC 日期、声明、纪要和点阵图变化，再写利率路径判断",
     "FRED latest Treasury constants": "FRED 最新美债利率",
+    "US Treasury 2-Year Constant Maturity Rate": "美国国债 2 年期收益率",
+    "US Treasury 10-Year Constant Maturity Rate": "美国国债 10 年期收益率",
+    "US Treasury 30-Year Constant Maturity Rate": "美国国债 30 年期收益率",
     "10Y-2Y spread": "10Y-2Y 利差",
     "Compare yield move with TLT/QQQ/IWM and earnings multiple compression before explaining equity moves": "先把收益率变化和 TLT、QQQ、IWM 以及估值压缩放在一起看，再解释股价变化",
     "If FRED values are stale or market proxies disagree, keep rates as background rather than causal explanation": "如果 FRED 数值过期，或市场代理资产不配合，只把利率当背景，不当因果解释",
@@ -276,6 +299,11 @@ TEXT_REPLACEMENTS = {
     "If latest filing is routine or unrelated to capex/收入/risk, downgrade it from the CXO brief": "如果最新 filing 只是例行披露，或和资本开支、收入、风险无关，就从 CXO brief 降级",
     "SEC recent submissions": "SEC 最新披露",
     "SEC recent submissions show": "SEC 最新披露显示",
+    "SEC filing body retrieved for": "SEC filing 正文已取得：",
+    "interpretation remains blocked pending relevant-section review": "仍需阅读相关章节后才能形成解释",
+    "Read the relevant business, risk, MD&A, and event sections before stating an implication": "先阅读经营、风险、管理层讨论与事件章节，再判断披露含义",
+    "Body retrieval and hashing do not prove a business implication until relevant sections are read": "只取得并校验正文，不能在读完相关章节前证明经营含义",
+    "If body retrieval or section extraction is incomplete, do not create a business interpretation": "如果正文取得或章节提取不完整，不形成经营解释",
     "latest filing": "最新 filing",
     "dated": "日期",
     " at ": "，单日 ",
@@ -372,6 +400,13 @@ def render_cxo_brief(
         return "\n".join(lines)
 
     lines: list[str] = ["# 个人投研快扫", ""]
+    evidence_labels = {
+        "primary_body_read": "一手正文已读",
+        "primary_body_retrieved": "一手正文已获取，尚未完成相关段落阅读",
+        "cross_checked_data": "二源核验数据",
+        "single_source_data": "单源数据",
+    }
+    freshness_labels = {"current": "当前", "stale": "过期"}
     for item in items[:5]:
         cand = item.candidate
         title = _zh(cand.title).rstrip("。.")
@@ -400,6 +435,9 @@ def render_cxo_brief(
             lines.extend(["", _clean_cn_punctuation("".join(second_paragraph))])
         if cand.source_url:
             lines.extend(["", f"[来源]({cand.source_url})"])
+        evidence_label = evidence_labels.get(cand.evidence_status, cand.evidence_status)
+        freshness_label = freshness_labels.get(cand.freshness_status, cand.freshness_status or "未知")
+        lines.extend(["", f"证据状态：{evidence_label}；新鲜度：{freshness_label}；资料日期：{cand.as_of_date}。"])
         lines.append("")
 
     lines.append(f"资料截至：{local_date}。只用于个人投资研究与风险判断，不是交易建议。")
@@ -426,13 +464,17 @@ def scan_cxo_brief_quality(text: str) -> dict[str, int]:
     audience_misframes = ["问团队", "公司预算", "供应商选择", "管理判断", "覆盖回执"]
     result.update({f"audience_misframe:{marker}": text.count(marker) for marker in audience_misframes})
     allowed_english = {
-        "ai", "aapl", "akshare", "alphabet", "amd", "amzn", "cdbu", "cmbu", "cloud", "cpu", "dram", "etf", "fed", "fomc",
+        "ai", "aapl", "akshare", "alphabet", "amd", "amzn", "cdbu", "cmbu", "cloud", "cpu", "dram", "etf", "fed", "filing", "fomc",
         "form", "fred", "gcp", "google", "gpu", "hpc", "intel", "iwm", "micron", "nand", "nvidia",
         "googl", "msft", "nvda", "qqq", "sec", "smh", "spy", "ssd", "tlt", "tpu", "tsmc", "tushare", "usd", "vertiv", "vrt", "workspace",
         "xlk", "yoy", "qoq",
     }
     english_tokens = re.findall(r"\b[A-Za-z][A-Za-z-]{2,}\b", text_without_links)
-    result["mixed_english:prose_tokens"] = sum(1 for token in english_tokens if token.lower() not in allowed_english)
+    result["mixed_english:prose_tokens"] = sum(
+        1
+        for token in english_tokens
+        if token.lower() not in allowed_english and not (token.isupper() and 1 <= len(token) <= 5)
+    )
     ai_markers = [
         "为什么看：",
         "现在看到的证据：",

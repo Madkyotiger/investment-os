@@ -13,6 +13,7 @@ import pandas as pd
 
 from . import __version__
 from .cxo_intelligence import CXOProfile, build_cxo_brief_items, write_cxo_outputs
+from .daily_runner import DailyRunError, run_daily
 from .pipeline import SymbolConfig, analyze_history, metrics_to_csv, render_report, run as run_pipeline
 from .source_universe_intake import SourceCandidate
 
@@ -34,6 +35,11 @@ def _demo_candidates() -> list[SourceCandidate]:
             source="synthetic demo fixture",
             source_type="demo_source_body",
             as_of_date="2026-06-30",
+            retrieved_at="2026-07-01T00:00:00+00:00",
+            freshness_status="current",
+            freshness_threshold_days=3,
+            source_url="https://example.invalid/demo-company-source",
+            content_hash="sha256:demo-company-margin-quality",
             themes="AI,margin,earnings",
             source_authority=4,
             freshness=5,
@@ -62,6 +68,11 @@ def _demo_candidates() -> list[SourceCandidate]:
             source="synthetic demo fixture",
             source_type="demo_macro_data",
             as_of_date="2026-06-30",
+            retrieved_at="2026-07-01T00:00:00+00:00",
+            freshness_status="current",
+            freshness_threshold_days=3,
+            source_url="https://example.invalid/demo-macro-source",
+            content_hash="sha256:demo-macro-rates",
             themes="Fed,rates",
             source_authority=4,
             freshness=5,
@@ -194,6 +205,14 @@ def main(argv: list[str] | None = None) -> int:
     live.add_argument("--out", type=Path, required=True)
     live.add_argument("--strict", action="store_true", help="Exit 2 if no symbol has usable data.")
 
+    daily = subparsers.add_parser("daily", help="Collect, validate, update state, and write a local daily brief.")
+    daily.add_argument("--config", type=Path, required=True, help="Watchlist YAML path.")
+    daily.add_argument("--profile", type=Path, required=True, help="Reader profile YAML path.")
+    daily.add_argument("--state", type=Path, required=True, help="Durable topic-state JSON path.")
+    daily.add_argument("--out", type=Path, required=True)
+    daily.add_argument("--strict", action="store_true", help="In live mode, fail if every usable source fails.")
+    daily.add_argument("--offline", action="store_true", help="Use the deterministic bundled synthetic fixture.")
+
     args = parser.parse_args(argv)
     if args.command == "doctor":
         return run_doctor()
@@ -201,6 +220,23 @@ def main(argv: list[str] | None = None) -> int:
         return run_demo(args.out)
     if args.command == "run":
         return run_live(args.config, args.out, args.strict)
+    if args.command == "daily":
+        try:
+            result = run_daily(
+                args.config,
+                args.profile,
+                args.state,
+                args.out,
+                strict=args.strict,
+                offline=args.offline,
+            )
+        except DailyRunError as error:
+            print(f"daily_run=fail reason={error}", file=sys.stderr)
+            return 2
+        print(f"daily_run={result.status}")
+        print(f"brief={result.brief_path}")
+        print(f"manifest={result.manifest_path}")
+        return 0
     parser.error(f"unknown command: {args.command}")
     return 2
 

@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from pathlib import Path
 
+from investment_os.judgment_kernel import evidence_fingerprint
 from investment_os.source_universe_intake import SourceCandidate, write_candidates
 from investment_os.topic_state import render_change_digest, update_topic_state
 
@@ -29,6 +30,7 @@ def _candidate(**overrides) -> SourceCandidate:
         "counter_explanation": "The change may be temporary mix rather than structural deterioration.",
         "next_primary_source": "Latest earnings call transcript and next 10-Q.",
         "evidence_status": "primary_read",
+        "content_hash": "sha256:filing-v1",
         "geography": "US",
     }
     data.update(overrides)
@@ -275,6 +277,75 @@ def test_same_source_with_new_evidence_digest_can_update_without_url_churn(tmp_p
     assert changes[0].changed_since_last_push is True
 
 
+def test_same_date_body_revision_changes_evidence_fingerprint(tmp_path):
+    candidates_csv = _write(tmp_path, [_candidate()])
+    state_path = tmp_path / "topic_state.json"
+    update_topic_state(candidates_csv, state_path, tmp_path / "state", generated_at=NOW)
+
+    revised = _candidate(
+        summary="The source body was revised on the same date with a changed margin fact.",
+        content_hash="sha256:filing-v2",
+    )
+    candidates_csv = _write(tmp_path, [revised])
+    changes, _, _ = update_topic_state(candidates_csv, state_path, tmp_path / "state", generated_at=NOW)
+
+    assert changes[0].change_type == "hypothesis_weakened"
+    assert changes[0].changed_since_last_push is True
+
+
+def test_observed_value_revision_changes_fingerprint_but_unchanged_value_is_idempotent():
+    row = {
+        "item_id": "macro:test",
+        "source": "FRED",
+        "source_type": "primary_macro_fred_yields_live",
+        "source_url": "https://fred.example/series",
+        "as_of_date": "2026-07-10",
+        "evidence_status": "single_source_data",
+        "observed_value": "4.25",
+    }
+
+    assert evidence_fingerprint(row) == evidence_fingerprint(dict(row))
+    assert evidence_fingerprint(row) != evidence_fingerprint({**row, "observed_value": "4.30"})
+
+
+def test_market_numeric_revision_is_meaningful_while_unchanged_evidence_is_idempotent(tmp_path):
+    initial = _candidate(
+        item_id="market_live:proxy_moves",
+        lane="market_action",
+        title="Market proxy move",
+        summary="SPY close 620.0.",
+        source="yfinance + Stooq",
+        source_type="market_proxy_prices_live",
+        source_url="https://finance.example/quotes",
+        tickers="SPY",
+        thesis_key="market:cross-asset-move",
+        thesis_impact="unknown_narrowed",
+        evidence_status="cross_checked_data",
+        content_hash="sha256:market-v1",
+        observed_value='{"SPY":{"close":620.0}}',
+    )
+    state_path = tmp_path / "topic_state.json"
+    initial_csv = _write(tmp_path, [initial])
+    update_topic_state(initial_csv, state_path, tmp_path / "state", generated_at=NOW)
+
+    unchanged, _, _ = update_topic_state(initial_csv, state_path, tmp_path / "state", generated_at=NOW)
+    revised = _candidate(
+        **{
+            **initial.__dict__,
+            "summary": "SPY close revised to 621.5 on the same date.",
+            "content_hash": "sha256:market-v2",
+            "observed_value": '{"SPY":{"close":621.5}}',
+        }
+    )
+    revised_csv = _write(tmp_path, [revised])
+    changed, _, _ = update_topic_state(revised_csv, state_path, tmp_path / "state", generated_at=NOW)
+
+    assert unchanged[0].change_type == "unchanged"
+    assert unchanged[0].changed_since_last_push is False
+    assert changed[0].change_type == "unknown_narrowed"
+    assert changed[0].changed_since_last_push is True
+
+
 def test_metadata_interlude_does_not_erase_last_meaningful_evidence(tmp_path):
     body = _candidate()
     candidates_csv = _write(tmp_path, [body])
@@ -302,3 +373,53 @@ def test_metadata_interlude_does_not_erase_last_meaningful_evidence(tmp_path):
 
     assert reentry_changes[0].change_type == "unchanged"
     assert reentry_changes[0].changed_since_last_push is False
+
+
+def test_stale_status_stays_diagnostic_but_cannot_be_current_fact(tmp_path):
+    stale = _candidate(
+        as_of_date="2026-07-10",
+        evidence_status="stale",
+        thesis_impact="strengthened",
+        freshness_status="stale",
+    )
+    candidates_csv = _write(tmp_path, [stale])
+    changes, _, _ = update_topic_state(
+        candidates_csv, tmp_path / "topic_state.json", tmp_path / "state", generated_at=NOW
+    )
+    assert changes[0].evidence_status == "stale"
+    assert changes[0].changed_since_last_push is False
+    assert changes[0].change_type == "background_only"
+
+
+def test_source_threshold_controls_promotion_window_instead_of_hardcoded_three_days(tmp_path):
+    weekend_current = _candidate(
+        as_of_date="2026-07-05",
+        freshness_status="current",
+        freshness_threshold_days=5,
+        thesis_impact="unknown_narrowed",
+    )
+    candidates_csv = _write(tmp_path, [weekend_current])
+
+    changes, _, _ = update_topic_state(
+        candidates_csv, tmp_path / "topic_state.json", tmp_path / "state", generated_at=NOW
+    )
+
+    assert changes[0].change_type == "new_question"
+    assert changes[0].changed_since_last_push is True
+
+
+def test_explicit_stale_status_cannot_promote_even_inside_source_threshold(tmp_path):
+    stale = _candidate(
+        as_of_date="2026-07-10",
+        freshness_status="stale",
+        freshness_threshold_days=5,
+        thesis_impact="unknown_narrowed",
+    )
+    candidates_csv = _write(tmp_path, [stale])
+
+    changes, _, _ = update_topic_state(
+        candidates_csv, tmp_path / "topic_state.json", tmp_path / "state", generated_at=NOW
+    )
+
+    assert changes[0].change_type == "background_only"
+    assert changes[0].changed_since_last_push is False

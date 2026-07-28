@@ -148,6 +148,47 @@ def build_source_check_tasks(items: list[EvidenceItem], generated_at: datetime |
     return tasks
 
 
+def build_official_macro_source_targets(generated_at: datetime | None = None) -> list[SourceCheckTask]:
+    generated_at = generated_at or datetime.now(timezone.utc)
+    created_at = generated_at.date().isoformat()
+    targets = [
+        (
+            "FOMC",
+            "Federal Reserve policy calendar and statements",
+            "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
+            "Fetch an official dated statement or calendar observation before using it as current evidence.",
+        ),
+        (
+            "UST_YIELD_CURVE",
+            "U.S. Treasury daily par yield curve rates",
+            "https://home.treasury.gov/resource-center/data-chart-center/interest-rates",
+            "Resolve a stable machine-readable official endpoint or keep FRED observations explicitly sourced.",
+        ),
+    ]
+    return [
+        SourceCheckTask(
+            task_id=f"MACRO-{generated_at.strftime('%Y%m%d')}-{index:02d}",
+            symbol=symbol,
+            priority="P1",
+            cadence="weekly_until_resolved",
+            created_at=created_at,
+            next_check_date=(generated_at.date() + timedelta(days=7)).isoformat(),
+            queue_status="open",
+            source_status="source_target_only",
+            evidence_direction="gap",
+            evidence_strength="blocked",
+            expert_signal="",
+            verification_topic=topic,
+            current_evidence="",
+            source_targets=url,
+            success_criteria=criteria,
+            source_gap="A source target is not a fetched observation and cannot be promoted as current evidence.",
+            source_url=url,
+        )
+        for index, (symbol, topic, url, criteria) in enumerate(targets, start=1)
+    ]
+
+
 def scan_source_check_queue_quality(text: str) -> dict[str, int]:
     lower_text = text.lower()
     return {phrase: lower_text.count(phrase.lower()) for phrase in QUALITY_FORBIDDEN_PHRASES}

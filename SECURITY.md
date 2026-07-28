@@ -1,8 +1,10 @@
 # Security and data handling
 
-Do not commit API keys, access tokens, cookies, private keys, holdings, personal profiles, private research, raw browser captures, or delivery-channel identifiers.
+Do not commit API keys, access tokens, cookies, private keys, holdings, personal profiles, private research, raw browser captures, or external endpoint identifiers.
 
 Use environment variables for credentials and `*.local.*` or `*.private.*` for local configuration. Those patterns are ignored by Git.
+
+Investment OS does not store channel credentials or send messages. It writes local research artifacts and a completed manifest with artifact hashes. Any downstream system that distributes an artifact owns destination authorization, credential handling, payload construction, retries, and deduplication outside this repository.
 
 Run this before every push:
 

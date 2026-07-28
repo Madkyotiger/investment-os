@@ -13,9 +13,10 @@ This repository is a public evaluation release. It does not recommend, size, or 
 - Evidence states that keep metadata, single-source data, cross-checked data, and source-body reading separate.
 - Research questions, counter-explanations, next-source prompts, and kill signals.
 - A brief renderer that stays quiet when nothing changed enough to deserve attention.
+- An auditable `investment-os daily` runner with explicit watchlist/profile/state paths, source receipts, completed-run manifests, structured failures, and deterministic offline fixtures.
 - Boundary tests that reject trade instructions and internal process leakage from reader output.
 
-It is not a brokerage client, portfolio manager, trading bot, or autonomous financial adviser. Scheduling and message delivery are deliberately outside this repository.
+It is not a brokerage client, portfolio manager, trading bot, autonomous financial adviser, scheduler, or messaging client.
 
 ## Quick start
 
@@ -42,6 +43,19 @@ demo-output/
 ```
 
 A clean demo proves the local package, output path, ranking path, renderer, and boundary scan work together. It does not prove live source availability.
+
+For the full daily path without network access:
+
+```bash
+uv run investment-os daily \
+  --config configs/watchlist.sample.yaml \
+  --profile configs/profiles.sample.yaml \
+  --state .local/daily-state.json \
+  --out .local/daily-evaluation \
+  --offline
+```
+
+Run it again with the same `--state` and a different `--out`: the second completed run returns `daily_run=quiet` and does not re-promote unchanged evidence. `--strict` in live mode fails only when no usable fresh live source succeeds; blocked source targets and stale last-known-good observations do not count as current successes. FRED freshness and per-series material-change thresholds, plus the five-calendar-day market snapshot threshold, are explicit in `configs/macro_series.yaml`; the same config is bundled in the wheel for runs outside a checkout. See [`docs/QUICKSTART.md`](docs/QUICKSTART.md).
 
 ## Agent install
 
@@ -94,6 +108,8 @@ export TUSHARE_TOKEN="..."
 
 Never commit credentials or real holdings. Keep them in environment variables and ignored local files.
 
+AKShare and Tushare are convenience/secondary adapters, not official first-party sources. Official China coverage for PBOC, NBS, CNINFO, SSE, SZSE, and HKEX is explicitly incomplete until a stable endpoint is verified and fetched evidence is retained.
+
 ## Research boundary
 
 Investment OS can tell you:
@@ -105,6 +121,10 @@ Investment OS can tell you:
 - what would weaken the working thesis.
 
 It must not tell you to buy, sell, hold, size a position, or execute a trade. Market data can be stale, incomplete, delayed, revised, or wrong. Source metadata proves a document exists; it does not prove the interpretation.
+
+## Artifact handoff boundary
+
+`investment-os daily` writes `cxo_daily_brief.md` beside a completed `manifest.json` that records artifact hashes and run status. That is the handoff boundary. Investment OS does not choose a destination, format a channel payload, hold endpoint credentials, send messages, or manage channel-level retries and deduplication. A downstream runtime may use any channel after independently validating the completed manifest and artifact hash.
 
 ## Repository boundary
 
@@ -118,7 +138,9 @@ uv run python scripts/public_release_guard.py
 
 ## Project status
 
-Version `0.1.0` is ready for installation and evaluation, not unattended production. The next proof is a short human test using real daily briefs. Cron and automated delivery should wait until that test passes.
+Version `0.1.0` is ready for installation and evaluation, not unattended production. The next proof is a short human-reviewed test using real daily briefs. Scheduling and downstream distribution remain outside this repository.
+
+The repository does not depend on or vendor FinceptTerminal. No FinceptTerminal code is copied here; external systems may be used only as behavioral comparison points during evaluation.
 
 ## License
 

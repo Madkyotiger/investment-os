@@ -8,6 +8,7 @@ from investment_os.spike2_china_data import (
     ChinaSymbolConfig,
     build_china_memo,
     build_china_reconciliation_evidence,
+    classify_convenience_evidence,
     parse_symbol_arg,
     render_china_memo,
 )
@@ -163,3 +164,34 @@ def test_china_reconciliation_marks_stale_source_as_partial_even_when_dates_matc
     assert evidence[0].value == "same_trade_date"
     assert evidence[0].status == "partial"
     assert "tushare_status=stale" in evidence[0].note
+
+
+def test_akshare_and_tushare_are_convenience_not_official_sources():
+    items = [
+        EvidenceItem(
+            symbol="000300",
+            category="china_index",
+            claim="latest index close",
+            value="4300",
+            source="AKShare.stock_zh_index_daily",
+            as_of_date="2026-07-03",
+            freshness="fresh",
+            status="ok",
+        ),
+        EvidenceItem(
+            symbol="000300",
+            category="china_tushare",
+            claim="latest index close",
+            value="4301",
+            source="Tushare.index_daily",
+            as_of_date="2026-07-03",
+            freshness="fresh",
+            status="ok",
+        ),
+    ]
+
+    classify_convenience_evidence(items)
+
+    assert all(item.source_authority == "convenience_secondary" for item in items)
+    assert items[0].underlying_endpoint == "Sina index feed via AKShare"
+    assert items[1].underlying_endpoint == "Tushare index_daily"

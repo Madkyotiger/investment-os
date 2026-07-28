@@ -47,6 +47,23 @@ class Spike2RunResult:
     ledger_json_path: Path
 
 
+def classify_convenience_evidence(items: list[EvidenceItem]) -> None:
+    for item in items:
+        source = item.source.lower()
+        if source.startswith("akshare"):
+            item.source_authority = "convenience_secondary"
+            if "fund_etf_spot_em" in source:
+                item.underlying_endpoint = "Eastmoney ETF spot feed via AKShare"
+            elif "stock_zh_index_daily" in source:
+                item.underlying_endpoint = "Sina index feed via AKShare"
+            else:
+                item.underlying_endpoint = "Underlying AKShare endpoint not identified"
+        elif source.startswith("tushare"):
+            item.source_authority = "convenience_secondary"
+            endpoint = item.source.split(".", 1)[1] if "." in item.source else "runtime status"
+            item.underlying_endpoint = f"Tushare {endpoint}"
+
+
 def _safe_float(value: Any) -> float | None:
     try:
         if value is None or pd.isna(value):
@@ -409,11 +426,13 @@ def build_china_memo(cfg: ChinaSymbolConfig, generated_at: datetime | None = Non
         evidence, gaps = fetch_akshare_index_evidence(cfg)
     else:
         evidence, gaps = fetch_akshare_etf_evidence(cfg)
+    classify_convenience_evidence(evidence)
     memo.evidence.extend(evidence)
     for gap in gaps:
         _add_gap(memo, gap)
 
     tushare_evidence, tushare_gaps = fetch_tushare_status_evidence(cfg)
+    classify_convenience_evidence(tushare_evidence)
     memo.evidence.extend(tushare_evidence)
     for gap in tushare_gaps:
         _add_gap(memo, gap)
@@ -457,8 +476,9 @@ def render_china_memo(memos: list[ChinaResearchMemo], generated_at: datetime | N
     lines.append("## 1. Scope")
     lines.append("")
     lines.append("- Goal: put China-market data into the same Data Quality Gate and Evidence Ledger.")
-    lines.append("- Primary open source: AKShare.")
-    lines.append("- Credentialed skeleton: Tushare, gated by `TUSHARE_TOKEN`.")
+    lines.append("- Convenience/secondary adapter: AKShare, with the underlying endpoint retained where known.")
+    lines.append("- Credentialed convenience adapter: Tushare, gated by `TUSHARE_TOKEN`.")
+    lines.append("- Official-source coverage is incomplete; PBOC, NBS, CNINFO, SSE, SZSE and HKEX remain explicit source targets until fetched evidence exists.")
     lines.append("- Decision boundary: research memo only; no trade decision, no position sizing, no execution.")
     lines.append("")
     lines.append("## 2. Data Quality Summary")
@@ -501,7 +521,7 @@ def render_china_memo(memos: list[ChinaResearchMemo], generated_at: datetime | N
 
     lines.append("## 4. Integration Verdict")
     lines.append("")
-    lines.append("- AKShare can enter the China-market branch of the Phase 1 mainline as an open data source.")
+    lines.append("- AKShare can enter the China-market branch only as a convenience/secondary market-data adapter, not official first-party evidence.")
     lines.append("- Tushare is wired as a credential-gated supplement; without token it must show as missing, not silently disappear.")
     lines.append("- China-market fields now use the same source/as_of_date/freshness/status contract as the US filing-backed memo.")
     lines.append("")

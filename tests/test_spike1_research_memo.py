@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from investment_os.spike1_research_memo import EvidenceItem, SymbolResearchMemo, render_research_memo
+from investment_os.spike1_research_memo import (
+    EvidenceItem,
+    SymbolResearchMemo,
+    can_generate_business_implication,
+    render_research_memo,
+)
 
 
 def test_spike1_research_memo_preserves_evidence_and_boundary():
@@ -66,3 +71,20 @@ def test_evidence_items_have_required_source_and_freshness_fields():
     assert item.as_of_date
     assert item.freshness
     assert item.status in {"ok", "partial", "stale", "missing"}
+
+
+def test_metadata_only_filing_cannot_generate_business_implication():
+    item = EvidenceItem(
+        symbol="ACME",
+        category="filing",
+        claim="Latest SEC 10-Q filing metadata",
+        value="10-Q filed",
+        source="SEC submissions",
+        as_of_date="2026-07-07",
+        freshness="fresh",
+        status="ok",
+        url="https://www.sec.gov/example.htm",
+        body_read_status="metadata_only",
+    )
+
+    assert can_generate_business_implication(item) is False

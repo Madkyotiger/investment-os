@@ -2,16 +2,32 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
-import os
-import urllib.error
-import urllib.request
-from dataclasses import asdict, dataclass
+import tempfile
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+from .evidence_contract import infer_body_read_status, normalize_evidence_status
+from .http_client import HttpClient, HttpRequestError
+from .macro_sources import (
+    MacroObservation,
+    collect_macro_observations,
+    load_macro_series,
+    load_market_stale_after_days,
+    observation_freshness,
+    parse_latest_observation,
+)
+
+
+_HTTP_CLIENT = HttpClient()
+_LAST_SOURCE_ERRORS: list[dict[str, object]] = []
+RELEVANT_SEC_FORMS = frozenset({"10-K", "10-Q", "8-K", "4"})
+BUSINESS_FILING_FORMS = frozenset({"10-K", "10-Q", "8-K"})
 
 
 @dataclass
@@ -37,6 +53,25 @@ class HardSourceCandidate:
     next_check: str = ""
     kill_signal: str = ""
     cannot_prove: str = ""
+    thesis_impact: str = "unknown"
+    counter_explanation: str = ""
+    next_primary_source: str = ""
+    observed_value: str = ""
+    revision: float | None = None
+    retrieved_at: str = ""
+    body_read_status: str = ""
+    content_hash: str = ""
+    freshness_status: str = "current"
+    freshness_threshold_days: int = 3
+    evidence_status: str = ""
+    source_errors: list[dict[str, object]] = field(default_factory=list)
+    accession_number: str = ""
+
+    def __post_init__(self) -> None:
+        self.body_read_status = infer_body_read_status(
+            self.source_type, self.content_hash, self.body_read_status
+        )
+        self.evidence_status = normalize_evidence_status(asdict(self))
 
     def to_row(self) -> dict[str, str | int]:
         return asdict(self)
@@ -46,6 +81,18 @@ def _load_watchlist(path: Path) -> dict[str, list[str]]:
     raw = yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else {}
     groups = raw.get("groups", {}) if raw else {}
     return {group: [str(symbol) for symbol in data.get("symbols", [])] for group, data in groups.items()}
+
+
+def _load_symbol_metadata(path: Path) -> dict[str, dict[str, object]]:
+    raw = yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else {}
+    metadata = raw.get("symbol_metadata", {}) if raw else {}
+    if not isinstance(metadata, dict):
+        return {}
+    return {
+        str(symbol).upper(): dict(values)
+        for symbol, values in metadata.items()
+        if isinstance(values, dict)
+    }
 
 
 def _flatten_watchlist(groups: dict[str, list[str]]) -> set[str]:
@@ -59,25 +106,20 @@ def _watchlist_tags(symbol: str, groups: dict[str, list[str]]) -> list[str]:
     return [group for group, symbols in groups.items() if symbol in symbols]
 
 
-def _request_headers(url: str) -> dict[str, str]:
-    if "sec.gov" in url:
-        identity = os.getenv("SEC_EDGAR_IDENTITY", "").strip()
-        if not identity:
-            raise RuntimeError("SEC_EDGAR_IDENTITY is required for SEC requests")
-        return {"User-Agent": identity}
-    return {"User-Agent": "InvestmentOS/0.1 (+https://github.com/Madkyotiger/investment-os)"}
+def _record_source_error(error: HttpRequestError) -> None:
+    _LAST_SOURCE_ERRORS.append(error.to_dict())
+
+
+def get_last_source_errors() -> list[dict[str, object]]:
+    return [dict(error) for error in _LAST_SOURCE_ERRORS]
 
 
 def _http_json(url: str, timeout: int = 10) -> dict | list:
-    request = urllib.request.Request(url, headers=_request_headers(url))
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        return json.loads(response.read().decode("utf-8"))
+    return _HTTP_CLIENT.get_json(url)
 
 
 def _http_text(url: str, timeout: int = 10) -> str:
-    request = urllib.request.Request(url, headers=_request_headers(url))
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        return response.read().decode("utf-8")
+    return _HTTP_CLIENT.get_text(url)
 
 
 def _safe_float(value: Any) -> float | None:
@@ -94,7 +136,8 @@ def _safe_sec_recent() -> dict:
         data = _http_json("https://www.sec.gov/files/company_tickers.json")
         if isinstance(data, dict):
             return data
-    except Exception:
+    except HttpRequestError as error:
+        _record_source_error(error)
         return {}
     return {}
 
@@ -130,6 +173,7 @@ def collect_sec_watchlist_candidates(watchlist_groups: dict[str, list[str]], gen
                 decision_usefulness=3,
                 portfolio_relevance=5 if tags else 2,
                 confidence="verified",
+                retrieved_at=generated_at.isoformat(),
                 next_check="Use the CIK to fetch recent 10-K, 10-Q, 8-K, Form 4 and 13F filing metadata.",
                 kill_signal="If SEC identity lookup fails or CIK changes, block filing interpretation until refreshed.",
             )
@@ -137,42 +181,85 @@ def collect_sec_watchlist_candidates(watchlist_groups: dict[str, list[str]], gen
     return candidates
 
 
-def _latest_sec_filing_for_cik(cik: str) -> dict[str, str] | None:
+def _recent_sec_filings_for_cik(cik: str) -> list[dict[str, str]]:
     if not cik:
-        return None
+        return []
     padded = str(cik).zfill(10)
     try:
         data = _http_json(f"https://data.sec.gov/submissions/CIK{padded}.json")
-    except Exception:
-        return None
+    except HttpRequestError as error:
+        _record_source_error(error)
+        return []
     recent = data.get("filings", {}).get("recent", {}) if isinstance(data, dict) else {}
     forms = recent.get("form", [])
     dates = recent.get("filingDate", [])
     accessions = recent.get("accessionNumber", [])
     primary_docs = recent.get("primaryDocument", [])
-    if not forms or not dates:
-        return None
-    return {
-        "form": str(forms[0]),
-        "filing_date": str(dates[0]),
-        "accession": str(accessions[0]) if accessions else "",
-        "primary_doc": str(primary_docs[0]) if primary_docs else "",
-    }
+    filings: list[dict[str, str]] = []
+    for index, form in enumerate(forms):
+        if str(form) not in RELEVANT_SEC_FORMS:
+            continue
+        filings.append(
+            {
+                "form": str(form),
+                "filing_date": str(dates[index]) if index < len(dates) else "",
+                "accession": str(accessions[index]) if index < len(accessions) else "",
+                "primary_doc": str(primary_docs[index]) if index < len(primary_docs) else "",
+            }
+        )
+    return filings
 
 
-def collect_sec_recent_filing_candidates(watchlist_groups: dict[str, list[str]], generated_at: datetime, max_symbols: int = 8) -> list[HardSourceCandidate]:
-    symbols = [symbol for group in ("core_us", "ai_infra") for symbol in watchlist_groups.get(group, [])]
+def _latest_sec_filing_for_cik(cik: str) -> dict[str, str] | None:
+    filings = _recent_sec_filings_for_cik(cik)
+    return filings[0] if filings else None
+
+
+def _latest_sec_business_filing_for_cik(cik: str) -> dict[str, str] | None:
+    return next(
+        (filing for filing in _recent_sec_filings_for_cik(cik) if filing["form"] in BUSINESS_FILING_FORMS),
+        None,
+    )
+
+
+def collect_sec_recent_filing_candidates(
+    watchlist_groups: dict[str, list[str]],
+    generated_at: datetime,
+    max_symbols: int = 8,
+    symbol_metadata: dict[str, dict[str, object]] | None = None,
+) -> list[HardSourceCandidate]:
+    if symbol_metadata:
+        symbols = sorted(
+            symbol.upper()
+            for symbol, metadata in symbol_metadata.items()
+            if str(metadata.get("market", "")).upper() == "US" and bool(metadata.get("sec_filings", False))
+        )
+    else:
+        symbols = sorted(
+            {
+                symbol.upper()
+                for symbol in _flatten_watchlist(watchlist_groups)
+                if symbol and symbol.replace("-", "").isalpha()
+            }
+        )
     sec_map = _safe_sec_recent()
     cik_by_ticker = {str(row.get("ticker", "")).upper(): str(row.get("cik_str", "")) for row in sec_map.values()}
     candidates: list[HardSourceCandidate] = []
     for ticker in symbols[:max_symbols]:
         cik = cik_by_ticker.get(ticker.upper(), "")
         latest = _latest_sec_filing_for_cik(cik)
-        if not latest:
+        if not latest or latest["form"] not in RELEVANT_SEC_FORMS:
             continue
         accession_path = latest["accession"].replace("-", "")
         source_url = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{accession_path}/{latest['primary_doc']}" if cik and latest["accession"] and latest["primary_doc"] else "https://data.sec.gov/submissions/"
         tags = _watchlist_tags(ticker, watchlist_groups)
+        try:
+            filing_age_days = (
+                generated_at.date() - datetime.fromisoformat(latest["filing_date"][:10]).date()
+            ).days
+        except ValueError:
+            filing_age_days = 4
+        filing_freshness_status = "current" if 0 <= filing_age_days <= 3 else "stale"
         candidates.append(
             HardSourceCandidate(
                 item_id=f"primary_sec:{ticker}:latest_filing",
@@ -193,9 +280,78 @@ def collect_sec_recent_filing_candidates(watchlist_groups: dict[str, list[str]],
                 decision_usefulness=4,
                 portfolio_relevance=5,
                 confidence="verified_metadata",
+                retrieved_at=generated_at.isoformat(),
+                freshness_status=filing_freshness_status,
+                freshness_threshold_days=3,
                 next_check="Read the filing body and transcript before turning metadata into a business conclusion.",
                 kill_signal="If latest filing is routine or unrelated to capex/revenue/risk, downgrade it from the CXO brief.",
                 cannot_prove="Filing metadata proves a document exists; it does not prove the business implication.",
+                accession_number=latest["accession"],
+            )
+        )
+        business_latest = latest if latest["form"] in BUSINESS_FILING_FORMS else _latest_sec_business_filing_for_cik(cik)
+        if not business_latest:
+            continue
+        business_accession_path = business_latest["accession"].replace("-", "")
+        source_url = (
+            f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{business_accession_path}/"
+            f"{business_latest['primary_doc']}"
+            if cik and business_latest["accession"] and business_latest["primary_doc"]
+            else "https://data.sec.gov/submissions/"
+        )
+        if not source_url.startswith("https://www.sec.gov/Archives/"):
+            continue
+        try:
+            body = _http_text(source_url, timeout=12)
+        except HttpRequestError as error:
+            _record_source_error(error)
+            continue
+        if not body.strip():
+            continue
+        content_hash = "sha256:" + hashlib.sha256(body.encode("utf-8")).hexdigest()
+        try:
+            body_age_days = (
+                generated_at.date() - datetime.fromisoformat(business_latest["filing_date"][:10]).date()
+            ).days
+        except ValueError:
+            body_age_days = 4
+        body_freshness_status = "current" if 0 <= body_age_days <= 3 else "stale"
+        candidates.append(
+            HardSourceCandidate(
+                item_id=f"primary_sec:{ticker}:{business_latest['accession']}:body",
+                lane="company_events",
+                title=f"{ticker} {business_latest['form']} primary filing body was retrieved",
+                summary=(
+                    f"SEC filing body retrieved for {ticker} {business_latest['form']} dated "
+                    f"{business_latest['filing_date']}; interpretation remains blocked pending relevant-section review."
+                ),
+                source="SEC primary filing body",
+                source_type="primary_filing_body_retrieved",
+                as_of_date=business_latest["filing_date"],
+                retrieved_at=generated_at.isoformat(),
+                tickers=ticker,
+                themes=",".join(tags),
+                source_url=source_url,
+                source_authority=5,
+                freshness=5,
+                evidence_change=1,
+                magnitude=3,
+                novelty=3,
+                decision_usefulness=4,
+                portfolio_relevance=5,
+                confidence="verified_body_retrieval",
+                thesis_impact="unknown",
+                counter_explanation="这份文件可能只是例行披露，或与当前研究问题无关。",
+                next_primary_source="文件相关章节、最新业绩会记录与业务附注。",
+                next_check="Read the relevant business, risk, MD&A, and event sections before stating an implication.",
+                kill_signal="If body retrieval or section extraction is incomplete, do not create a business interpretation.",
+                cannot_prove="Body retrieval and hashing do not prove a business implication until relevant sections are read.",
+                body_read_status="retrieved",
+                content_hash=content_hash,
+                freshness_status=body_freshness_status,
+                freshness_threshold_days=3,
+                evidence_status="primary_body_retrieved",
+                accession_number=business_latest["accession"],
             )
         )
     return candidates
@@ -205,7 +361,8 @@ def _fred_latest(series_id: str) -> tuple[str, float] | None:
     url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
     try:
         text = _http_text(url, timeout=12)
-    except Exception:
+    except HttpRequestError as error:
+        _record_source_error(error)
         return None
     rows = list(csv.DictReader(text.splitlines()))
     for row in reversed(rows):
@@ -215,8 +372,134 @@ def _fred_latest(series_id: str) -> tuple[str, float] | None:
     return None
 
 
+def _fred_series_text(series_id: str) -> str:
+    return _http_text(f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}", timeout=12)
+
+
+def _macro_candidate(
+    observation: MacroObservation,
+    generated_at: datetime,
+    threshold_days: int,
+    material_change_threshold: float,
+) -> HardSourceCandidate:
+    structured = {
+        "series_id": observation.series_id,
+        "observation_date": observation.observation_date,
+        "level": observation.level,
+        "change": observation.change,
+        "revision": observation.revision,
+        "unit": observation.unit,
+    }
+    observed_value = json.dumps(structured, sort_keys=True, separators=(",", ":"))
+    content_hash = "sha256:" + hashlib.sha256(observed_value.encode("utf-8")).hexdigest()
+    display_unit = {"percent": "%", "index": "指数点", "thousands": "千人"}.get(
+        observation.unit, observation.unit
+    )
+    change_text = ""
+    if observation.change is not None:
+        change_text = f"；较前次发布观测变化 {observation.change:+.4g} {display_unit}"
+    revision_text = ""
+    if observation.revision is not None:
+        revision_text = f"；检测到同日期数值修订 {observation.revision:+.4g} {display_unit}"
+    material_change = any(
+        value is not None and abs(value) + 1e-12 >= material_change_threshold
+        for value in (observation.change, observation.revision)
+    )
+    return HardSourceCandidate(
+        item_id=f"primary_macro:fred:{observation.series_id}",
+        lane="macro_regime",
+        title=f"FRED {observation.series_id} 官方观测已更新，待结合相邻数据核验",
+        summary=(
+            f"FRED {observation.series_id} 在 {observation.observation_date} 的官方观测值为 "
+            f"{observation.level:.4g} {display_unit}{change_text}{revision_text}。"
+        ),
+        source="FRED fredgraph.csv",
+        source_type="primary_macro_fred_live",
+        as_of_date=observation.observation_date,
+        themes="macro,official_observation",
+        source_url=observation.source_url,
+        source_authority=5,
+        freshness=1 if observation.freshness_status == "stale" else 5,
+        evidence_change=4 if material_change else 1,
+        magnitude=3,
+        novelty=3,
+        decision_usefulness=4,
+        portfolio_relevance=3,
+        confidence="verified_data",
+        thesis_impact="unknown_narrowed" if material_change else "unknown",
+        counter_explanation="相邻官方序列、修订或统计口径可能给出不同解释。",
+        next_primary_source="相邻官方序列及下一次正式发布。",
+        observed_value=observed_value,
+        revision=observation.revision,
+        retrieved_at=generated_at.isoformat(),
+        next_check="先与相邻官方序列和相关市场价格交叉核验，再解释其含义。",
+        kill_signal="若观测已过期、再次修订或与相邻官方数据冲突，只保留为背景。",
+        cannot_prove="单个官方宏观观测不能证明市场方向、因果关系或公司层面影响。",
+        content_hash=content_hash,
+        freshness_status=observation.freshness_status,
+        freshness_threshold_days=threshold_days,
+    )
+
+
+def collect_fred_macro_candidates(
+    generated_at: datetime,
+    *,
+    state_path: Path | None = None,
+) -> list[HardSourceCandidate]:
+    definitions = load_macro_series()
+    fetched: dict[str, str] = {}
+    usable_definitions = {}
+    for series_id, definition in definitions.items():
+        try:
+            text = _fred_series_text(series_id)
+            parse_latest_observation(series_id, text, generated_at, definition)
+            fetched[series_id] = text
+            usable_definitions[series_id] = definition
+        except HttpRequestError as error:
+            _record_source_error(error)
+        except ValueError as error:
+            _LAST_SOURCE_ERRORS.append(
+                {
+                    "source": "FRED",
+                    "code": "invalid_observation",
+                    "message": str(error),
+                    "source_url": f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}",
+                    "transient": False,
+                }
+            )
+    if not usable_definitions:
+        return []
+
+    def collect_at(path: Path) -> list[HardSourceCandidate]:
+        observations = collect_macro_observations(
+            usable_definitions,
+            fetch_text=lambda series_id: fetched[series_id],
+            state_path=path,
+            retrieved_at=generated_at,
+        )
+        return [
+            _macro_candidate(
+                observation,
+                generated_at,
+                definitions[observation.series_id].stale_after_days,
+                definitions[observation.series_id].material_change_threshold,
+            )
+            for observation in observations
+        ]
+
+    if state_path is not None:
+        return collect_at(state_path)
+    with tempfile.TemporaryDirectory(prefix="investment-os-macro-") as temporary:
+        return collect_at(Path(temporary) / "macro-state.json")
+
+
 def collect_fred_yield_candidates(generated_at: datetime) -> list[HardSourceCandidate]:
-    series = {"DGS2": "2Y", "DGS10": "10Y", "DGS30": "30Y"}
+    definitions = load_macro_series()
+    series = {
+        "DGS2": definitions["DGS2"].label,
+        "DGS10": definitions["DGS10"].label,
+        "DGS30": definitions["DGS30"].label,
+    }
     latest: dict[str, tuple[str, float]] = {}
     for series_id in series:
         value = _fred_latest(series_id)
@@ -229,6 +512,19 @@ def collect_fred_yield_candidates(generated_at: datetime) -> list[HardSourceCand
     if "DGS2" in latest and "DGS10" in latest:
         curve_note = f"; 10Y-2Y spread {(latest['DGS10'][1] - latest['DGS2'][1]):.2f}pp"
     as_of = max(date for date, _ in latest.values())
+    freshness_threshold_days = min(definitions[series_id].stale_after_days for series_id in latest)
+    freshness_status = (
+        "stale"
+        if any(
+            observation_freshness(observation_date, generated_at, definitions[series_id]) == "stale"
+            for series_id, (observation_date, _value) in latest.items()
+        )
+        else "current"
+    )
+    content_hash = "sha256:" + hashlib.sha256(
+        json.dumps(latest, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    observed_value = json.dumps(latest, sort_keys=True, separators=(",", ":"))
     return [HardSourceCandidate(
         item_id="primary_macro:fred_yield_curve_live",
         lane="macro_regime",
@@ -240,24 +536,74 @@ def collect_fred_yield_candidates(generated_at: datetime) -> list[HardSourceCand
         tickers="TLT,SPY,QQQ,IWM",
         themes="rates,duration,financing_cost",
         source_url="https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS2,DGS10,DGS30",
-        source_authority=5, freshness=5, evidence_change=4, magnitude=4, novelty=3, decision_usefulness=5, portfolio_relevance=4,
+        source_authority=5, freshness=1 if freshness_status == "stale" else 5, evidence_change=2, magnitude=3, novelty=3, decision_usefulness=5, portfolio_relevance=4,
         confidence="verified_data",
+        thesis_impact="unknown",
+        counter_explanation="期限溢价或技术性因素可能比政策预期更重要。",
+        next_primary_source="FRED 相邻期限序列、官方发布与市场代理资产。",
+        observed_value=observed_value,
+        retrieved_at=generated_at.isoformat(),
         next_check="Compare yield move with TLT/QQQ/IWM and earnings multiple compression before explaining equity moves.",
         kill_signal="If FRED values are stale or market proxies disagree, keep rates as background rather than causal explanation.",
         cannot_prove="Yield levels alone do not prove equity direction or sector causality.",
+        content_hash=content_hash,
+        freshness_status=freshness_status,
+        freshness_threshold_days=freshness_threshold_days,
     )]
 
 
 def _download_yfinance_snapshot(symbols: list[str]) -> dict[str, dict[str, float | str]]:
     try:
         import yfinance as yf
+    except ImportError:
+        _LAST_SOURCE_ERRORS.append(
+            {
+                "source": "yfinance",
+                "lane": "market_action",
+                "code": "unavailable",
+                "message": "yfinance market adapter is unavailable",
+                "source_url": "https://query1.finance.yahoo.com/",
+                "transient": False,
+            }
+        )
+        return {}
     except Exception:
+        _LAST_SOURCE_ERRORS.append(
+            {
+                "source": "yfinance",
+                "lane": "market_action",
+                "code": "adapter_error",
+                "message": "yfinance market adapter failed to initialize",
+                "source_url": "https://query1.finance.yahoo.com/",
+                "transient": False,
+            }
+        )
         return {}
     try:
         data = yf.download(symbols, period="6mo", interval="1d", progress=False, auto_adjust=True, threads=False)
     except Exception:
+        _LAST_SOURCE_ERRORS.append(
+            {
+                "source": "yfinance",
+                "lane": "market_action",
+                "code": "download_error",
+                "message": "yfinance market snapshot download failed",
+                "source_url": "https://query1.finance.yahoo.com/",
+                "transient": True,
+            }
+        )
         return {}
     if data is None or getattr(data, "empty", True):
+        _LAST_SOURCE_ERRORS.append(
+            {
+                "source": "yfinance",
+                "lane": "market_action",
+                "code": "unavailable",
+                "message": "yfinance market snapshot returned no usable data",
+                "source_url": "https://query1.finance.yahoo.com/",
+                "transient": True,
+            }
+        )
         return {}
     try:
         close = data["Close"]
@@ -296,7 +642,8 @@ def _download_stooq_snapshot(symbols: list[str]) -> dict[str, dict[str, float | 
         try:
             text = _http_text(url, timeout=10)
             rows = list(csv.DictReader(text.splitlines()))
-        except Exception:
+        except HttpRequestError as error:
+            _record_source_error(error)
             continue
         clean = [row for row in rows if _safe_float(row.get("Close")) is not None]
         if len(clean) < 5:
@@ -316,25 +663,51 @@ def _download_stooq_snapshot(symbols: list[str]) -> dict[str, dict[str, float | 
     return snapshots
 
 
-def _cross_check_market_snapshot(primary: dict[str, dict[str, float | str]], secondary: dict[str, dict[str, float | str]]) -> tuple[str, str]:
+def _cross_check_market_snapshot(
+    primary: dict[str, dict[str, float | str]],
+    secondary: dict[str, dict[str, float | str]],
+    expected_symbols: list[str] | None = None,
+) -> tuple[str, str]:
+    expected = set(expected_symbols or primary)
+    missing_primary = sorted(expected - set(primary))
     if not secondary:
         return "market_data_probable", "二源行情暂未取得；价格变化只作为待核验市场线索。"
     checked = 0
     mismatches: list[str] = []
+    missing: list[str] = []
     for symbol, pdata in primary.items():
         sdata = secondary.get(symbol)
         if not sdata:
+            missing.append(symbol)
             continue
         checked += 1
+        if str(pdata.get("date", "")) != str(sdata.get("date", "")):
+            mismatches.append(f"{symbol}(date)")
+            continue
         pclose = _safe_float(pdata.get("close"))
         sclose = _safe_float(sdata.get("close"))
-        if pclose and sclose and abs(pclose / sclose - 1) > 0.03:
-            mismatches.append(symbol)
+        if pclose is None or sclose is None or pclose == 0 or sclose == 0:
+            mismatches.append(f"{symbol}(close)")
+        elif abs(pclose / sclose - 1) > 0.03 + 1e-12:
+            mismatches.append(f"{symbol}(close)")
     if checked == 0:
         return "market_data_probable", "二源行情没有覆盖当前代理资产；价格变化只作为待核验市场线索。"
     if mismatches:
-        return "market_data_mixed", f"二源行情覆盖 {checked} 个代理资产，但 {', '.join(mismatches)} 收盘价偏差超过 3%。"
-    return "market_data_cross_checked", f"Stooq 二源行情已覆盖 {checked} 个代理资产，收盘价未见超过 3% 的偏差。"
+        return "market_data_mixed", f"二源行情存在日期或收盘价冲突：{', '.join(mismatches)}。"
+    if missing_primary:
+        return (
+            "market_data_probable",
+            f"Yahoo Finance 主行情缺少 {', '.join(missing_primary)}；现有价格变化只作为待核验市场线索。",
+        )
+    if checked != len(primary):
+        return (
+            "market_data_probable",
+            f"Stooq 二源行情只覆盖 {checked}/{len(primary)} 个代理资产；未覆盖 {', '.join(missing)}，不能标记为完整二源核验。",
+        )
+    return (
+        "market_data_cross_checked",
+        f"Stooq 二源行情已按同一日期覆盖全部 {checked} 个代理资产，收盘价未见超过 3% 的偏差。",
+    )
 
 def collect_market_move_candidates(watchlist_groups: dict[str, list[str]], generated_at: datetime) -> list[HardSourceCandidate]:
     symbols = watchlist_groups.get("market_proxies", [])[:]
@@ -344,11 +717,36 @@ def collect_market_move_candidates(watchlist_groups: dict[str, list[str]], gener
     if not snapshots:
         return []
     secondary = _download_stooq_snapshot(symbols)
-    confidence, cross_check_note = _cross_check_market_snapshot(snapshots, secondary)
+    confidence, cross_check_note = _cross_check_market_snapshot(snapshots, secondary, symbols)
+    source_errors = []
+    if confidence == "market_data_mixed":
+        source_errors.append(
+            {
+                "code": "source_conflict",
+                "message": cross_check_note,
+                "source_url": "https://stooq.com/",
+                "transient": False,
+            }
+        )
     ranked = sorted(snapshots.items(), key=lambda item: abs(float(item[1].get("one_day_pct", 0))), reverse=True)
     top_symbol, top = ranked[0]
+    market_freshness_threshold = load_market_stale_after_days()
+    try:
+        market_age_days = (
+            generated_at.date() - datetime.fromisoformat(str(top.get("date", ""))[:10]).date()
+        ).days
+    except ValueError:
+        market_age_days = market_freshness_threshold + 1
+    freshness_status = "current" if 0 <= market_age_days <= market_freshness_threshold else "stale"
+    top_one_day_move = abs(float(top.get("one_day_pct", 0)))
     summary = "; ".join(f"{symbol}: close {data['close']}, 1D {data['one_day_pct']}%, 60D {data['sixty_day_pct']}%" for symbol, data in ranked[:5])
     summary = f"{summary}. {cross_check_note}"
+    observed_value = json.dumps(
+        {"primary_yfinance": snapshots, "secondary_stooq": secondary},
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    content_hash = "sha256:" + hashlib.sha256(observed_value.encode("utf-8")).hexdigest()
     return [HardSourceCandidate(
         item_id="market_live:proxy_moves",
         lane="market_action",
@@ -357,14 +755,24 @@ def collect_market_move_candidates(watchlist_groups: dict[str, list[str]], gener
         source="yfinance daily adjusted prices + Stooq cross-check",
         source_type="market_proxy_prices_live",
         as_of_date=str(top.get("date", generated_at.date().isoformat())),
-        tickers=",".join(symbols),
+        tickers=",".join(symbol for symbol in symbols if symbol in snapshots),
         themes="market_proxies",
-        source_url="https://query1.finance.yahoo.com/; https://stooq.com/",
-        source_authority=4 if confidence == "market_data_cross_checked" else 3, freshness=5,
-        evidence_change=4 if abs(float(top.get("one_day_pct", 0))) >= 1 else 2,
-        magnitude=4 if abs(float(top.get("one_day_pct", 0))) >= 1 else 2,
+        source_url="https://query1.finance.yahoo.com/",
+        source_authority=4 if confidence == "market_data_cross_checked" else 3,
+        freshness=1 if freshness_status == "stale" else 5,
+        evidence_change=4 if top_one_day_move >= 1 else 2,
+        magnitude=4 if top_one_day_move >= 1 else 2,
         novelty=3, decision_usefulness=4, portfolio_relevance=4,
         confidence=confidence,
+        thesis_impact="unknown_narrowed" if top_one_day_move >= 1 else "unknown",
+        counter_explanation="价格变化可能只是 beta、流动性或报价差异，不能单独证明原因。",
+        next_primary_source="交叉核验行情、官方利率数据与相关公司披露。",
+        observed_value=observed_value,
+        retrieved_at=generated_at.isoformat(),
+        content_hash=content_hash,
+        freshness_status=freshness_status,
+        freshness_threshold_days=market_freshness_threshold,
+        source_errors=source_errors,
         next_check="Use market proxy moves only after cross-checking the quote source and matching them against rates, dollar and sector leadership.",
         kill_signal="If quote sources are stale, unavailable, or materially inconsistent, downgrade market-action commentary.",
         cannot_prove="Price movement does not prove the cause of the move.",
@@ -457,16 +865,36 @@ def collect_watchlist_relevance_candidates(watchlist_groups: dict[str, list[str]
     return candidates
 
 
-def collect_hard_source_candidates(watchlist_path: Path, generated_at: datetime | None = None) -> list[HardSourceCandidate]:
+def collect_hard_source_candidates(
+    watchlist_path: Path,
+    generated_at: datetime | None = None,
+    *,
+    macro_state_path: Path | None = None,
+) -> list[HardSourceCandidate]:
     generated_at = generated_at or datetime.now(timezone.utc)
+    _LAST_SOURCE_ERRORS.clear()
     groups = _load_watchlist(watchlist_path)
+    symbol_metadata = _load_symbol_metadata(watchlist_path)
     candidates: list[HardSourceCandidate] = []
     candidates.extend(collect_sec_watchlist_candidates(groups, generated_at))
-    candidates.extend(collect_sec_recent_filing_candidates(groups, generated_at))
+    candidates.extend(
+        collect_sec_recent_filing_candidates(
+            groups,
+            generated_at,
+            symbol_metadata=symbol_metadata,
+        )
+    )
     candidates.extend(collect_macro_hard_candidates(generated_at))
-    candidates.extend(collect_fred_yield_candidates(generated_at))
+    if macro_state_path is None:
+        candidates.extend(collect_fred_yield_candidates(generated_at))
+    else:
+        candidates.extend(collect_fred_macro_candidates(generated_at, state_path=macro_state_path))
     candidates.extend(collect_market_move_candidates(groups, generated_at))
     candidates.extend(collect_watchlist_relevance_candidates(groups, generated_at))
+    retrieved_at = generated_at.isoformat()
+    for candidate in candidates:
+        if not candidate.retrieved_at:
+            candidate.retrieved_at = retrieved_at
     return candidates
 
 

@@ -33,3 +33,28 @@ def test_strict_live_run_fails_when_every_row_is_degraded(monkeypatch, tmp_path)
 
     monkeypatch.setattr("investment_os.cli.run_pipeline", fake_run)
     assert main(["run", "--config", "unused.yaml", "--out", str(tmp_path / "live"), "--strict"]) == 2
+
+
+def test_daily_command_supports_exact_offline_contract_and_reports_quiet(tmp_path, capsys):
+    state = tmp_path / "topic-state.json"
+    command = [
+        "daily",
+        "--config",
+        "configs/watchlist.sample.yaml",
+        "--profile",
+        "configs/profiles.sample.yaml",
+        "--state",
+        str(state),
+        "--out",
+        str(tmp_path / "run-1"),
+        "--strict",
+        "--offline",
+    ]
+
+    assert main(command) == 0
+    first_output = capsys.readouterr().out
+    assert "daily_run=completed" in first_output
+    assert (tmp_path / "run-1" / "cxo_daily_brief.md").exists()
+    command[command.index(str(tmp_path / "run-1"))] = str(tmp_path / "run-2")
+    assert main(command) == 0
+    assert "daily_run=quiet" in capsys.readouterr().out
