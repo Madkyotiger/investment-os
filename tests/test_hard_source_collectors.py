@@ -1,14 +1,21 @@
 import json
+import types
+import builtins
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
+
 from investment_os.hard_source_collectors import (
+    _download_yfinance_snapshot,
+    get_last_source_errors,
     collect_fred_yield_candidates,
     collect_hard_source_candidates,
     collect_market_move_candidates,
     collect_sec_recent_filing_candidates,
     write_hard_source_candidates,
 )
+from investment_os.judgment_kernel import is_promotable
 
 WATCHLIST = Path("configs/watchlist.sample.yaml")
 
@@ -281,6 +288,89 @@ def test_sec_body_candidate_retains_accession_url_and_hash(monkeypatch):
     assert body.cannot_prove
     assert body.retrieved_at == "2026-07-08T00:00:00+00:00"
     assert body.thesis_impact == "unknown_narrowed"
+
+
+def test_old_sec_metadata_and_body_are_stale_and_nonpromotable(monkeypatch):
+    monkeypatch.setattr(
+        "investment_os.hard_source_collectors._safe_sec_recent",
+        lambda: {"0": {"ticker": "ACME", "cik_str": "1234", "title": "Acme"}},
+    )
+    monkeypatch.setattr(
+        "investment_os.hard_source_collectors._latest_sec_filing_for_cik",
+        lambda _cik: {
+            "form": "10-Q",
+            "filing_date": "2026-06-01",
+            "accession": "0001-02-03",
+            "primary_doc": "acme.htm",
+        },
+    )
+    monkeypatch.setattr(
+        "investment_os.hard_source_collectors._http_text",
+        lambda _url, timeout=10: "<html><body>old filing body</body></html>",
+    )
+
+    candidates = collect_sec_recent_filing_candidates(
+        {"research": ["ACME"]}, datetime(2026, 7, 8, tzinfo=timezone.utc)
+    )
+
+    assert len(candidates) == 2
+    assert all(candidate.freshness_status == "stale" for candidate in candidates)
+    assert all(candidate.evidence_status == "stale" for candidate in candidates)
+    assert all(not is_promotable(candidate.to_row()) for candidate in candidates)
+
+
+def test_yfinance_failures_are_recorded_as_structured_secret_safe_market_errors(monkeypatch):
+    import investment_os.hard_source_collectors as collectors
+
+    collectors._LAST_SOURCE_ERRORS.clear()
+    monkeypatch.setitem(
+        __import__("sys").modules,
+        "yfinance",
+        types.SimpleNamespace(download=lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("token=secret"))),
+    )
+
+    assert _download_yfinance_snapshot(["SPY"]) == {}
+    error = get_last_source_errors()[-1]
+    assert error == {
+        "source": "yfinance",
+        "lane": "market_action",
+        "code": "download_error",
+        "message": "yfinance market snapshot download failed",
+        "source_url": "https://query1.finance.yahoo.com/",
+        "transient": True,
+    }
+    assert "secret" not in json.dumps(error)
+
+
+@pytest.mark.parametrize(
+    ("raised", "code", "message"),
+    [
+        (ImportError("not installed"), "unavailable", "yfinance market adapter is unavailable"),
+        (RuntimeError("token=secret"), "adapter_error", "yfinance market adapter failed to initialize"),
+    ],
+)
+def test_yfinance_import_and_adapter_failures_are_structured(monkeypatch, raised, code, message):
+    import investment_os.hard_source_collectors as collectors
+
+    collectors._LAST_SOURCE_ERRORS.clear()
+    original_import = builtins.__import__
+
+    def fail_yfinance(name, *args, **kwargs):
+        if name == "yfinance":
+            raise raised
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fail_yfinance)
+
+    assert _download_yfinance_snapshot(["SPY"]) == {}
+    assert get_last_source_errors()[-1] == {
+        "source": "yfinance",
+        "lane": "market_action",
+        "code": code,
+        "message": message,
+        "source_url": "https://query1.finance.yahoo.com/",
+        "transient": False,
+    }
 
 
 def test_sec_form4_metadata_does_not_block_newer_business_filing_body(monkeypatch):

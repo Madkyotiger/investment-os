@@ -155,18 +155,40 @@ def is_promotable(row: Mapping[str, object]) -> bool:
         "unavailable",
     }:
         return False
-    required = ("item_id", "lane", "title", "summary", "source", "as_of_date")
-    if any(not _text(enriched, field) for field in required):
+    required = (
+        "item_id", "lane", "title", "summary", "source", "source_type", "as_of_date",
+        "retrieved_at", "freshness_status", "freshness_threshold_days",
+        "counter_explanation", "next_primary_source", "kill_signal", "cannot_prove",
+    )
+    if any(not _text(row, field) for field in required):
         return False
-    synthetic = "synthetic" in _text(enriched, "source").lower() or _text(enriched, "source_type").startswith("demo_")
-    if not _text(enriched, "source_url") and not synthetic:
+    content_hash = _text(row, "content_hash")
+    evidence_digest = _text(row, "evidence_digest")
+    if not evidence_digest and not (content_hash.startswith("sha256:") and len(content_hash) > len("sha256:")):
+        return False
+    if not _text(row, "source_url").startswith(("https://", "http://")):
+        return False
+    if _text(row, "freshness_status").lower() not in {"current", "fresh"}:
+        return False
+    try:
+        retrieved_at = datetime.fromisoformat(_text(row, "retrieved_at").replace("Z", "+00:00"))
+        threshold = int(float(_text(row, "freshness_threshold_days")))
+    except ValueError:
+        return False
+    if retrieved_at.tzinfo is None:
+        return False
+    as_of_date = _parse_date(_text(row, "as_of_date"))
+    if as_of_date is None or threshold <= 0:
+        return False
+    age_days = (retrieved_at.date() - as_of_date).days
+    if age_days < 0 or age_days > threshold:
         return False
     if evidence_status == "primary_body_read":
         return bool(
             _text(enriched, "body_read_status") == "read"
             and _text(enriched, "content_hash")
             and _text(enriched, "source_url")
-        ) or _text(enriched, "body_read_status") == "legacy_read"
+        )
     return True
 
 

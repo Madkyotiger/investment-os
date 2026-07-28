@@ -33,3 +33,32 @@ def test_source_health_never_records_secret_values(tmp_path):
     )
     text = (tmp_path / "source-health.json").read_text(encoding="utf-8")
     assert "token=" not in text
+
+
+def test_stale_observation_does_not_replace_fresh_last_known_good(tmp_path):
+    store = SourceHealthStore(tmp_path / "source-health.json")
+    store.record_success(
+        "fred:dgs10",
+        "https://fred.test?id=DGS10",
+        NOW,
+        content_hash="sha256:fresh",
+        as_of_date="2026-07-10",
+        freshness_status="current",
+        freshness_threshold_days=5,
+        evidence_status="single_source_data",
+    )
+    store.record_observation(
+        "fred:dgs10",
+        "https://fred.test?id=DGS10",
+        NOW + timedelta(minutes=5),
+        content_hash="sha256:stale",
+        as_of_date="2026-06-01",
+        freshness_status="stale",
+        freshness_threshold_days=5,
+        evidence_status="stale",
+    )
+
+    health = store.get("fred:dgs10")
+    assert health["last_known_good"]["content_hash"] == "sha256:fresh"
+    assert health["last_observation"]["content_hash"] == "sha256:stale"
+    assert health["last_observation_status"] == "stale"

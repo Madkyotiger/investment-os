@@ -89,6 +89,10 @@ def test_live_strict_passes_when_one_usable_source_succeeds(monkeypatch, tmp_pat
             retrieved_at="2026-07-28T00:00:00+00:00",
             content_hash="sha256:usable",
             evidence_status="single_source_data",
+            counter_explanation="Adjacent official series may disagree.",
+            next_primary_source="Adjacent official series.",
+            kill_signal="Block if stale or revised.",
+            cannot_prove="One observation cannot prove causality.",
         ),
         HardSourceCandidate(
             item_id="macro:target",
@@ -104,7 +108,16 @@ def test_live_strict_passes_when_one_usable_source_succeeds(monkeypatch, tmp_pat
     monkeypatch.setattr("investment_os.daily_runner.collect_hard_source_candidates", lambda *_args, **_kwargs: candidates)
     monkeypatch.setattr(
         "investment_os.daily_runner.get_last_source_errors",
-        lambda: [{"source": "SEC", "code": "blocked", "message": "blocked candidate"}],
+        lambda: [
+            {
+                "source": "yfinance",
+                "lane": "market_action",
+                "source_url": "https://query1.finance.yahoo.com/",
+                "code": "download_error",
+                "message": "yfinance market snapshot download failed",
+                "transient": True,
+            }
+        ],
     )
 
     result = run_daily(WATCHLIST, PROFILE, tmp_path / "state.json", tmp_path / "live", strict=True)
@@ -113,6 +126,10 @@ def test_live_strict_passes_when_one_usable_source_succeeds(monkeypatch, tmp_pat
     assert manifest["usable_live_sources"] == 1
     assert manifest["blocked_items"] == 1
     assert manifest["source_failure_count"] == 1
+    market_failure = next(
+        record for key, record in manifest["source_health"].items() if key.startswith("market_yahoo")
+    )
+    assert market_failure["last_observation_status"] == "failure"
 
 
 def test_live_injected_fred_and_sec_evidence_promotes_once_then_rerun_is_quiet(monkeypatch, tmp_path: Path):
@@ -219,6 +236,81 @@ def test_live_strict_rejects_successful_but_stale_observations(monkeypatch, tmp_
         run_daily(WATCHLIST, PROFILE, tmp_path / "state.json", tmp_path / "live", strict=True)
 
 
+def test_stale_sec_receipts_are_all_counted_as_blocked(monkeypatch, tmp_path: Path):
+    stale = [
+        HardSourceCandidate(
+            item_id=f"primary_sec:ACME:{kind}",
+            lane="company_events",
+            title=f"Old SEC {kind}",
+            summary="The receipt is old.",
+            source="SEC",
+            source_type="primary_filing_body_read" if kind == "body" else "primary_sec_recent_filing",
+            source_url=f"https://www.sec.gov/Archives/{kind}",
+            as_of_date="2026-06-01",
+            retrieved_at="2026-07-28T00:00:00+00:00",
+            freshness_status="stale",
+            freshness_threshold_days=3,
+            content_hash="sha256:old" if kind == "body" else "",
+            body_read_status="read" if kind == "body" else "metadata_only",
+            counter_explanation="The filing may be routine.",
+            next_primary_source="A current filing.",
+            kill_signal="Block stale evidence.",
+            cannot_prove="An old receipt cannot prove a current change.",
+        )
+        for kind in ("metadata", "body")
+    ]
+    monkeypatch.setattr(
+        "investment_os.daily_runner.collect_hard_source_candidates",
+        lambda *_args, **_kwargs: stale,
+    )
+    monkeypatch.setattr("investment_os.daily_runner.get_last_source_errors", lambda: [])
+
+    result = run_daily(WATCHLIST, PROFILE, tmp_path / "state.json", tmp_path / "live")
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+
+    assert manifest["blocked_items"] == 2
+    assert manifest["promoted_items"] == 0
+
+
+def test_source_health_is_granular_per_fred_series(monkeypatch, tmp_path: Path):
+    source_date = datetime.now(timezone.utc).date().isoformat()
+    candidates = [
+        HardSourceCandidate(
+            item_id=f"primary_macro:fred:{series}",
+            lane="macro_regime",
+            title=f"FRED {series}",
+            summary="A current official observation.",
+            source="FRED fredgraph.csv",
+            source_type="primary_macro_fred_live",
+            source_url=f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series}",
+            as_of_date=source_date,
+            retrieved_at=datetime.now(timezone.utc).isoformat(),
+            freshness_status="current",
+            freshness_threshold_days=5,
+            content_hash=f"sha256:{series}",
+            counter_explanation="Adjacent official series may disagree.",
+            next_primary_source="Adjacent official series.",
+            kill_signal="Block if stale or revised.",
+            cannot_prove="One observation cannot prove causality.",
+        )
+        for series in ("DGS2", "DGS10")
+    ]
+    monkeypatch.setattr(
+        "investment_os.daily_runner.collect_hard_source_candidates",
+        lambda *_args, **_kwargs: candidates,
+    )
+    monkeypatch.setattr("investment_os.daily_runner.get_last_source_errors", lambda: [])
+
+    result = run_daily(WATCHLIST, PROFILE, tmp_path / "state.json", tmp_path / "live")
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    fred_records = {
+        key: record for key, record in manifest["source_health"].items() if key.startswith("fred:")
+    }
+
+    assert len(fred_records) == 2
+    assert all(record["last_success_at"] for record in fred_records.values())
+
+
 def test_manifest_is_written_last_as_completed_run_receipt(tmp_path: Path):
     result = _run(tmp_path, "manifest")
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
@@ -301,6 +393,7 @@ def test_atomic_directory_publish_failure_restores_previous_complete_run(monkeyp
 
 
 def test_live_daily_persists_source_health_and_does_not_promote_last_known_good(monkeypatch, tmp_path: Path):
+    current_date = datetime.now(timezone.utc).date().isoformat()
     old_candidate = HardSourceCandidate(
         item_id="macro:health",
         lane="macro_regime",
@@ -309,13 +402,17 @@ def test_live_daily_persists_source_health_and_does_not_promote_last_known_good(
         source="FRED",
         source_type="primary_macro_fred_live",
         source_url="https://fred.example/series",
-        as_of_date="2020-01-01",
-        retrieved_at="2026-07-28T00:00:00+00:00",
+        as_of_date=current_date,
+        retrieved_at=datetime.now(timezone.utc).isoformat(),
         content_hash="sha256:health",
         observed_value='{"level": 1.0}',
         freshness_status="current",
         freshness_threshold_days=5,
-        thesis_impact="unknown_narrowed",
+        thesis_impact="unknown",
+        counter_explanation="Adjacent official series may disagree.",
+        next_primary_source="Adjacent official series.",
+        kill_signal="Block if stale or revised.",
+        cannot_prove="One observation cannot prove causality.",
     )
     calls = {"count": 0}
 
@@ -326,7 +423,16 @@ def test_live_daily_persists_source_health_and_does_not_promote_last_known_good(
     monkeypatch.setattr("investment_os.daily_runner.collect_hard_source_candidates", fake_collect)
     monkeypatch.setattr(
         "investment_os.daily_runner.get_last_source_errors",
-        lambda: [] if calls["count"] == 1 else [{"source": "FRED", "code": "timeout", "message": "timed out"}],
+        lambda: []
+        if calls["count"] == 1
+        else [
+            {
+                "source": "FRED",
+                "source_url": "https://fred.example/series",
+                "code": "timeout",
+                "message": "timed out",
+            }
+        ],
     )
     state_path = tmp_path / "state.json"
 
@@ -340,7 +446,7 @@ def test_live_daily_persists_source_health_and_does_not_promote_last_known_good(
     fred_health = next(value for key, value in manifest["source_health"].items() if "fred" in key.lower())
     assert fred_health["last_success_at"]
     assert fred_health["last_failure_at"]
-    assert fred_health["last_known_good_status"] == "stale"
+    assert fred_health["last_known_good_status"] == "current"
     assert manifest["promoted_items"] == 0
     assert second.status == "quiet"
 
@@ -367,3 +473,78 @@ def test_completed_receipt_recovers_state_commit_interrupted_after_manifest(monk
     assert next_run.status == "quiet"
     assert state_path.exists()
     assert not (tmp_path / ".topic-state.json.pending.json").exists()
+
+
+@pytest.mark.parametrize(
+    ("point", "published", "recovered_status"),
+    [
+        ("journal_created", False, "completed"),
+        ("post_publication", True, "quiet"),
+        ("pre_state_commit", True, "quiet"),
+    ],
+)
+def test_exact_state_journal_fault_points_are_recoverable_and_rerun_quiet(
+    monkeypatch, tmp_path: Path, point: str, published: bool, recovered_status: str
+):
+    state_path = tmp_path / "topic-state.json"
+    out_dir = tmp_path / "interrupted-run"
+
+    def inject(actual: str) -> None:
+        if actual == point:
+            raise OSError(f"injected {point}")
+
+    monkeypatch.setattr(daily_runner, "_run_fault_injection", inject)
+    with pytest.raises(OSError, match=f"injected {point}"):
+        run_daily(WATCHLIST, PROFILE, state_path, out_dir, offline=True)
+
+    journal_path = tmp_path / ".topic-state.json.pending.json"
+    assert journal_path.exists()
+    assert (out_dir / "manifest.json").exists() is published
+    assert not state_path.exists()
+
+    monkeypatch.setattr(daily_runner, "_run_fault_injection", lambda _point: None)
+    recovered = run_daily(WATCHLIST, PROFILE, state_path, tmp_path / "recovery-run", offline=True)
+
+    assert recovered.status == recovered_status
+    assert not journal_path.exists()
+
+
+def test_stale_prepublish_journal_cannot_commit_an_existing_older_output(monkeypatch, tmp_path: Path):
+    old_state = tmp_path / "old-state.json"
+    out_dir = tmp_path / "reused-output"
+    run_daily(WATCHLIST, PROFILE, old_state, out_dir, offline=True)
+    state_path = tmp_path / "new-state.json"
+
+    def inject(point: str) -> None:
+        if point == "journal_created":
+            raise OSError("injected before publish")
+
+    monkeypatch.setattr(daily_runner, "_run_fault_injection", inject)
+    with pytest.raises(OSError, match="injected before publish"):
+        run_daily(WATCHLIST, PROFILE, state_path, out_dir, offline=True)
+    assert not state_path.exists()
+
+    monkeypatch.setattr(daily_runner, "_run_fault_injection", lambda _point: None)
+    recovered = run_daily(WATCHLIST, PROFILE, state_path, tmp_path / "recovered", offline=True)
+    assert recovered.status == "completed"
+
+
+def test_recovery_validates_every_published_artifact_before_committing_state(monkeypatch, tmp_path: Path):
+    state_path = tmp_path / "topic-state.json"
+    out_dir = tmp_path / "interrupted-run"
+
+    def inject(point: str) -> None:
+        if point == "post_publication":
+            raise OSError("injected after publish")
+
+    monkeypatch.setattr(daily_runner, "_run_fault_injection", inject)
+    with pytest.raises(OSError, match="injected after publish"):
+        run_daily(WATCHLIST, PROFILE, state_path, out_dir, offline=True)
+    (out_dir / "source_receipt.json").write_text("tampered\n", encoding="utf-8")
+
+    monkeypatch.setattr(daily_runner, "_run_fault_injection", lambda _point: None)
+    with pytest.raises(DailyRunError, match="run artifact mismatch"):
+        run_daily(WATCHLIST, PROFILE, state_path, tmp_path / "recovery", offline=True)
+
+    assert not state_path.exists()
+    assert (tmp_path / ".topic-state.json.pending.json").exists()

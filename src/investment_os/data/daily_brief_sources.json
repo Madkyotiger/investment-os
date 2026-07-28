@@ -23,13 +23,17 @@
       "confidence": "verified_body_retrieval",
       "thesis_key": "company:ACME:quarterly-evidence",
       "thesis_impact": "unknown_narrowed",
+      "counter_explanation": "短期变化也可能来自季节性，不能仅凭一期数据判断趋势。",
+      "next_primary_source": "下一份季度文件与业绩会原文。",
       "counter_thesis": "短期变化也可能来自季节性，不能仅凭一期数据判断趋势。",
       "next_check": "下一期收入增速、订单和利润率是否延续。",
       "kill_signal": "若下一期数据不延续，则撤销趋势判断。",
       "cannot_prove": "单份季度文件不能证明长期趋势或估值结论。",
       "evidence_status": "primary_body_read",
       "body_read_status": "read",
-      "content_hash": "sha256:fixture-acme-q2"
+      "content_hash": "sha256:fixture-acme-q2",
+      "freshness_status": "current",
+      "freshness_threshold_days": 3
     },
     {
       "item_id": "market_action:SPX:breadth:20260727",
@@ -53,12 +57,16 @@
       "confidence": "market_data_single_source",
       "thesis_key": "market:SPX:breadth",
       "thesis_impact": "unknown_narrowed",
+      "counter_explanation": "广度改善可能只是短期反弹，尚未得到基本面证据支持。",
+      "next_primary_source": "后续市场数据和相关正式披露。",
       "counter_thesis": "广度改善可能只是短期反弹，尚未得到基本面证据支持。",
       "next_check": "未来五个交易日的广度和成交量是否延续。",
       "kill_signal": "若广度迅速回落，则不再视为有效变化。",
       "cannot_prove": "单一合成市场源不能证明风险偏好已形成持久转向。",
       "evidence_status": "single_source_data",
-      "content_hash": "sha256:fixture-market"
+      "content_hash": "sha256:fixture-market",
+      "freshness_status": "current",
+      "freshness_threshold_days": 3
     },
     {
       "item_id": "macro_regime:FOMC:target",

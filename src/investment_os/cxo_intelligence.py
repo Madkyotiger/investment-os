@@ -114,6 +114,7 @@ def _load_candidates(path: Path) -> list[SourceCandidate]:
                 body_read_status=row.get("body_read_status", ""),
                 content_hash=row.get("content_hash", ""),
                 freshness_status=row.get("freshness_status", ""),
+                freshness_threshold_days=int(float(row.get("freshness_threshold_days") or 0)),
             )
         )
     return candidates

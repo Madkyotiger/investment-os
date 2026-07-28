@@ -54,6 +54,8 @@ class HardSourceCandidate:
     kill_signal: str = ""
     cannot_prove: str = ""
     thesis_impact: str = "unknown"
+    counter_explanation: str = ""
+    next_primary_source: str = ""
     observed_value: str = ""
     revision: float | None = None
     retrieved_at: str = ""
@@ -251,6 +253,13 @@ def collect_sec_recent_filing_candidates(
         accession_path = latest["accession"].replace("-", "")
         source_url = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{accession_path}/{latest['primary_doc']}" if cik and latest["accession"] and latest["primary_doc"] else "https://data.sec.gov/submissions/"
         tags = _watchlist_tags(ticker, watchlist_groups)
+        try:
+            filing_age_days = (
+                generated_at.date() - datetime.fromisoformat(latest["filing_date"][:10]).date()
+            ).days
+        except ValueError:
+            filing_age_days = 4
+        filing_freshness_status = "current" if 0 <= filing_age_days <= 3 else "stale"
         candidates.append(
             HardSourceCandidate(
                 item_id=f"primary_sec:{ticker}:latest_filing",
@@ -272,6 +281,8 @@ def collect_sec_recent_filing_candidates(
                 portfolio_relevance=5,
                 confidence="verified_metadata",
                 retrieved_at=generated_at.isoformat(),
+                freshness_status=filing_freshness_status,
+                freshness_threshold_days=3,
                 next_check="Read the filing body and transcript before turning metadata into a business conclusion.",
                 kill_signal="If latest filing is routine or unrelated to capex/revenue/risk, downgrade it from the CXO brief.",
                 cannot_prove="Filing metadata proves a document exists; it does not prove the business implication.",
@@ -298,6 +309,13 @@ def collect_sec_recent_filing_candidates(
         if not body.strip():
             continue
         content_hash = "sha256:" + hashlib.sha256(body.encode("utf-8")).hexdigest()
+        try:
+            body_age_days = (
+                generated_at.date() - datetime.fromisoformat(business_latest["filing_date"][:10]).date()
+            ).days
+        except ValueError:
+            body_age_days = 4
+        body_freshness_status = "current" if 0 <= body_age_days <= 3 else "stale"
         candidates.append(
             HardSourceCandidate(
                 item_id=f"primary_sec:{ticker}:{business_latest['accession']}:body",
@@ -323,11 +341,15 @@ def collect_sec_recent_filing_candidates(
                 portfolio_relevance=5,
                 confidence="verified_body_retrieval",
                 thesis_impact="unknown_narrowed",
+                counter_explanation="这份文件可能只是例行披露，或与当前研究问题无关。",
+                next_primary_source="文件相关章节、最新业绩会记录与业务附注。",
                 next_check="Read the relevant business, risk, MD&A, and event sections before stating an implication.",
                 kill_signal="If body retrieval or section extraction is incomplete, do not create a business interpretation.",
                 cannot_prove="Body retrieval and hashing do not prove a business implication until relevant sections are read.",
                 body_read_status="read",
                 content_hash=content_hash,
+                freshness_status=body_freshness_status,
+                freshness_threshold_days=3,
                 evidence_status="primary_body_read",
                 accession_number=business_latest["accession"],
             )
@@ -395,6 +417,8 @@ def _macro_candidate(observation: MacroObservation, generated_at: datetime, thre
         portfolio_relevance=3,
         confidence="verified_data",
         thesis_impact="unknown_narrowed",
+        counter_explanation="相邻官方序列、修订或统计口径可能给出不同解释。",
+        next_primary_source="相邻官方序列及下一次正式发布。",
         observed_value=observed_value,
         revision=observation.revision,
         retrieved_at=generated_at.isoformat(),
@@ -500,6 +524,8 @@ def collect_fred_yield_candidates(generated_at: datetime) -> list[HardSourceCand
         source_authority=5, freshness=1 if freshness_status == "stale" else 5, evidence_change=4, magnitude=4, novelty=3, decision_usefulness=5, portfolio_relevance=4,
         confidence="verified_data",
         thesis_impact="unknown_narrowed",
+        counter_explanation="期限溢价或技术性因素可能比政策预期更重要。",
+        next_primary_source="FRED 相邻期限序列、官方发布与市场代理资产。",
         observed_value=observed_value,
         retrieved_at=generated_at.isoformat(),
         next_check="Compare yield move with TLT/QQQ/IWM and earnings multiple compression before explaining equity moves.",
@@ -514,13 +540,55 @@ def collect_fred_yield_candidates(generated_at: datetime) -> list[HardSourceCand
 def _download_yfinance_snapshot(symbols: list[str]) -> dict[str, dict[str, float | str]]:
     try:
         import yfinance as yf
+    except ImportError:
+        _LAST_SOURCE_ERRORS.append(
+            {
+                "source": "yfinance",
+                "lane": "market_action",
+                "code": "unavailable",
+                "message": "yfinance market adapter is unavailable",
+                "source_url": "https://query1.finance.yahoo.com/",
+                "transient": False,
+            }
+        )
+        return {}
     except Exception:
+        _LAST_SOURCE_ERRORS.append(
+            {
+                "source": "yfinance",
+                "lane": "market_action",
+                "code": "adapter_error",
+                "message": "yfinance market adapter failed to initialize",
+                "source_url": "https://query1.finance.yahoo.com/",
+                "transient": False,
+            }
+        )
         return {}
     try:
         data = yf.download(symbols, period="6mo", interval="1d", progress=False, auto_adjust=True, threads=False)
     except Exception:
+        _LAST_SOURCE_ERRORS.append(
+            {
+                "source": "yfinance",
+                "lane": "market_action",
+                "code": "download_error",
+                "message": "yfinance market snapshot download failed",
+                "source_url": "https://query1.finance.yahoo.com/",
+                "transient": True,
+            }
+        )
         return {}
     if data is None or getattr(data, "empty", True):
+        _LAST_SOURCE_ERRORS.append(
+            {
+                "source": "yfinance",
+                "lane": "market_action",
+                "code": "unavailable",
+                "message": "yfinance market snapshot returned no usable data",
+                "source_url": "https://query1.finance.yahoo.com/",
+                "transient": True,
+            }
+        )
         return {}
     try:
         close = data["Close"]
@@ -657,6 +725,8 @@ def collect_market_move_candidates(watchlist_groups: dict[str, list[str]], gener
         novelty=3, decision_usefulness=4, portfolio_relevance=4,
         confidence=confidence,
         thesis_impact="unknown_narrowed" if top_one_day_move >= 1 else "unknown",
+        counter_explanation="价格变化可能只是 beta、流动性或报价差异，不能单独证明原因。",
+        next_primary_source="交叉核验行情、官方利率数据与相关公司披露。",
         observed_value=observed_value,
         retrieved_at=generated_at.isoformat(),
         content_hash=content_hash,

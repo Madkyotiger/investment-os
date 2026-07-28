@@ -76,6 +76,30 @@ def _write_json(path: Path, payload: object) -> None:
     _atomic_write(path, json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
 
 
+def _fsync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _write_durable_json(path: Path, payload: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    content = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        _fsync_directory(path.parent)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
 def _validate_inputs(watchlist_path: Path, profile_path: Path) -> None:
     for label, path in (("watchlist", watchlist_path), ("profile", profile_path)):
         if not path.is_file():
@@ -194,19 +218,18 @@ def _state_journal_path(state_path: Path) -> Path:
     return state_path.with_name(f".{state_path.name}.pending.json")
 
 
+def _run_fault_injection(_point: str) -> None:
+    """No-op seam used by deterministic crash-recovery tests."""
+
+
 def _commit_pending_state(state_path: Path, journal_path: Path) -> None:
     try:
         journal = json.loads(journal_path.read_text(encoding="utf-8"))
         manifest_path = Path(str(journal["manifest_path"]))
+        expected_manifest_hash = str(journal["manifest_sha256"])
         state_records = journal.get("states")
         if not isinstance(state_records, list):
-            state_records = [
-                {
-                    "target_path": str(state_path),
-                    "staged_state_path": journal["staged_state_path"],
-                    "state_sha256": journal["state_sha256"],
-                }
-            ]
+            raise TypeError("states must be a list")
     except (OSError, KeyError, TypeError, json.JSONDecodeError) as error:
         raise DailyRunError("pending topic-state commit journal is invalid") from error
 
@@ -214,11 +237,31 @@ def _commit_pending_state(state_path: Path, journal_path: Path) -> None:
         journal_path.unlink(missing_ok=True)
         return
     try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest_bytes = manifest_path.read_bytes()
+        manifest = json.loads(manifest_bytes)
     except (OSError, json.JSONDecodeError) as error:
         raise DailyRunError("pending topic-state manifest is invalid") from error
+    if _sha256_bytes(manifest_bytes) != expected_manifest_hash:
+        journal_path.unlink(missing_ok=True)
+        return
     if manifest.get("run_complete") is not True:
         raise DailyRunError("pending topic-state manifest is not a completed run receipt")
+    manifest_artifacts = manifest.get("artifacts")
+    if not isinstance(manifest_artifacts, dict):
+        raise DailyRunError("pending topic-state manifest artifacts are invalid")
+    for name, metadata in manifest_artifacts.items():
+        if not isinstance(name, str) or not isinstance(metadata, dict):
+            raise DailyRunError("pending topic-state manifest artifact is invalid")
+        artifact_path = manifest_path.parent / name
+        try:
+            artifact_bytes = artifact_path.read_bytes()
+        except OSError as error:
+            raise DailyRunError("pending topic-state run artifact is unavailable") from error
+        if (
+            _sha256_bytes(artifact_bytes) != str(metadata.get("sha256", ""))
+            or len(artifact_bytes) != int(metadata.get("bytes", -1))
+        ):
+            raise DailyRunError("pending topic-state run artifact mismatch")
     pending_writes: list[tuple[Path, bytes]] = []
     for record in state_records:
         if not isinstance(record, dict):
@@ -297,7 +340,7 @@ def _copy_or_initialize(source: Path, destination: Path) -> None:
         _atomic_write(destination, "{}\n")
 
 
-def _source_health_key(value: str) -> str:
+def _source_health_key(value: str, *, source_url: str = "", item_id: str = "") -> str:
     lowered = value.lower()
     for marker, key in (
         ("fred", "fred"),
@@ -308,9 +351,15 @@ def _source_health_key(value: str) -> str:
         ("stooq", "market_stooq"),
     ):
         if marker in lowered:
-            return key
-    normalized = "_".join(lowered.replace("://", "_").split())
-    return normalized[:160] or "unknown_source"
+            base = key
+            break
+    else:
+        base = "_".join(lowered.replace("://", "_").split())[:80] or "unknown_source"
+    granular = source_url or item_id
+    normalized = "_".join(
+        granular.lower().replace("://", "_").replace("/", "_").replace("?", "_").replace("&", "_").split()
+    )
+    return f"{base}:{normalized[:120]}" if normalized else base
 
 
 def _update_source_health(
@@ -322,8 +371,17 @@ def _update_source_health(
     for candidate in candidates:
         if candidate.evidence_status in {"source_target_only", "unavailable"}:
             continue
-        store.record_success(
-            _source_health_key(candidate.source),
+        method = (
+            store.record_success
+            if candidate.freshness_status != "stale" and is_fresh(candidate.to_row(), generated_at)
+            else store.record_observation
+        )
+        method(
+            _source_health_key(
+                candidate.source,
+                source_url=candidate.source_url,
+                item_id=candidate.item_id,
+            ),
             candidate.source_url,
             generated_at,
             content_hash=candidate.content_hash,
@@ -334,7 +392,11 @@ def _update_source_health(
         )
     for error in source_errors:
         source_name = str(error.get("source") or error.get("source_url") or "unknown_source")
-        store.record_failure(_source_health_key(source_name), error, generated_at)
+        store.record_failure(
+            _source_health_key(source_name, source_url=str(error.get("source_url", ""))),
+            error,
+            generated_at,
+        )
 
 
 def _source_health_diagnostics(store: SourceHealthStore, generated_at: datetime) -> dict[str, dict[str, object]]:
@@ -370,6 +432,7 @@ def _publish_run_directory(staged_dir: Path, out_dir: Path) -> None:
         os.replace(out_dir, backup)
     try:
         os.replace(staged_dir, out_dir)
+        _fsync_directory(out_dir.parent)
     except Exception:
         if backup is not None and backup.exists() and not out_dir.exists():
             os.replace(backup, out_dir)
@@ -546,23 +609,17 @@ def run_daily(
                 "artifacts": artifacts,
             },
         )
-        _publish_run_directory(staged_run_dir, out_dir)
-
-        brief_path = out_dir / brief_path.name
-        source_receipt_path = out_dir / source_receipt_path.name
-        source_errors_path = out_dir / source_errors_path.name
-        run_state_path = out_dir / run_state_path.name
-        delivery_preview_path = out_dir / delivery_preview_path.name
-        manifest_path = out_dir / manifest_path.name
         final_state_artifacts = [
             (target, out_dir / artifact.name)
             for target, artifact in state_artifacts
         ]
         journal_path = _state_journal_path(state_path)
-        _write_json(
+        _write_durable_json(
             journal_path,
             {
-                "manifest_path": str(manifest_path.resolve()),
+                "schema_version": 2,
+                "manifest_path": str((out_dir / manifest_path.name).resolve()),
+                "manifest_sha256": _sha256_bytes(manifest_path.read_bytes()),
                 "states": [
                     {
                         "target_path": str(target.resolve()),
@@ -573,6 +630,17 @@ def run_daily(
                 ],
             },
         )
+        _run_fault_injection("journal_created")
+        _publish_run_directory(staged_run_dir, out_dir)
+        _run_fault_injection("post_publication")
+
+        brief_path = out_dir / brief_path.name
+        source_receipt_path = out_dir / source_receipt_path.name
+        source_errors_path = out_dir / source_errors_path.name
+        run_state_path = out_dir / run_state_path.name
+        delivery_preview_path = out_dir / delivery_preview_path.name
+        manifest_path = out_dir / manifest_path.name
+        _run_fault_injection("pre_state_commit")
         _commit_pending_state(state_path, journal_path)
         topic_state_path = state_path
 

@@ -50,10 +50,48 @@ class SourceHealthStore:
     ) -> None:
         data = self._load()
         record = data.setdefault(source_name, {})
+        observation = {
+            "source_url": source_url,
+            "retrieved_at": occurred_at.isoformat(),
+            "content_hash": content_hash,
+            "as_of_date": as_of_date,
+            "freshness_status": freshness_status,
+            "freshness_threshold_days": freshness_threshold_days,
+            "evidence_status": evidence_status,
+        }
         record.update(
             {
                 "last_success_at": occurred_at.isoformat(),
-                "last_known_good": {
+                "last_observation_at": occurred_at.isoformat(),
+                "last_observation_status": "success",
+                "last_observation": observation,
+            }
+        )
+        previous = record.get("last_known_good")
+        previous_as_of = str(previous.get("as_of_date", "")) if isinstance(previous, dict) else ""
+        if not previous_as_of or as_of_date >= previous_as_of:
+            record["last_known_good"] = observation
+        self._write(data)
+
+    def record_observation(
+        self,
+        source_name: str,
+        source_url: str,
+        occurred_at: datetime,
+        *,
+        content_hash: str = "",
+        as_of_date: str = "",
+        freshness_status: str = "",
+        freshness_threshold_days: int = 0,
+        evidence_status: str = "",
+    ) -> None:
+        data = self._load()
+        record = data.setdefault(source_name, {})
+        record.update(
+            {
+                "last_observation_at": occurred_at.isoformat(),
+                "last_observation_status": freshness_status or evidence_status or "observed",
+                "last_observation": {
                     "source_url": source_url,
                     "retrieved_at": occurred_at.isoformat(),
                     "content_hash": content_hash,
@@ -81,5 +119,12 @@ class SourceHealthStore:
             "transient": bool(error.get("transient", False)),
             "status_code": error.get("status_code"),
         }
-        record.update({"last_failure_at": occurred_at.isoformat(), "last_error": safe_error})
+        record.update(
+            {
+                "last_failure_at": occurred_at.isoformat(),
+                "last_error": safe_error,
+                "last_observation_at": occurred_at.isoformat(),
+                "last_observation_status": "failure",
+            }
+        )
         self._write(data)
