@@ -33,3 +33,29 @@ def test_strict_live_run_fails_when_every_row_is_degraded(monkeypatch, tmp_path)
 
     monkeypatch.setattr("investment_os.cli.run_pipeline", fake_run)
     assert main(["run", "--config", "unused.yaml", "--out", str(tmp_path / "live"), "--strict"]) == 2
+
+
+def test_daily_command_runs_offline_and_keeps_delivery_dry_run(tmp_path):
+    out = tmp_path / "daily"
+
+    assert main([
+        "daily",
+        "--config",
+        "configs/daily_brief.sample.yaml",
+        "--out",
+        str(out),
+    ]) == 0
+
+    assert (out / "brief.md").exists()
+    assert '"live_delivery_enabled": false' in (out / "delivery_preview.json").read_text(encoding="utf-8")
+
+
+def test_daily_strict_mode_returns_nonzero_for_blocked_fixture(tmp_path):
+    assert main([
+        "daily",
+        "--config",
+        "configs/daily_brief.sample.yaml",
+        "--out",
+        str(tmp_path / "strict"),
+        "--strict",
+    ]) == 2

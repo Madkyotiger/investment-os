@@ -13,6 +13,7 @@ import pandas as pd
 
 from . import __version__
 from .cxo_intelligence import CXOProfile, build_cxo_brief_items, write_cxo_outputs
+from .daily_runner import DailyRunError, run_daily
 from .pipeline import SymbolConfig, analyze_history, metrics_to_csv, render_report, run as run_pipeline
 from .source_universe_intake import SourceCandidate
 
@@ -194,6 +195,11 @@ def main(argv: list[str] | None = None) -> int:
     live.add_argument("--out", type=Path, required=True)
     live.add_argument("--strict", action="store_true", help="Exit 2 if no symbol has usable data.")
 
+    daily = subparsers.add_parser("daily", help="Run the auditable offline daily brief workflow.")
+    daily.add_argument("--config", type=Path, default=Path("configs/daily_brief.sample.yaml"))
+    daily.add_argument("--out", type=Path, required=True)
+    daily.add_argument("--strict", action="store_true", help="Fail closed if any fixture evidence is blocked.")
+
     args = parser.parse_args(argv)
     if args.command == "doctor":
         return run_doctor()
@@ -201,6 +207,17 @@ def main(argv: list[str] | None = None) -> int:
         return run_demo(args.out)
     if args.command == "run":
         return run_live(args.config, args.out, args.strict)
+    if args.command == "daily":
+        try:
+            result = run_daily(args.config, args.out, strict=args.strict)
+        except DailyRunError as error:
+            print(f"daily_run=fail reason={error}", file=sys.stderr)
+            return 2
+        print("daily_run=pass")
+        print("delivery_mode=dry-run")
+        print(f"brief={result.brief_path}")
+        print(f"manifest={result.manifest_path}")
+        return 0
     parser.error(f"unknown command: {args.command}")
     return 2
 

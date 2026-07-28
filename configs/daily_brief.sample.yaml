@@ -1,0 +1,6 @@
+profile_config: configs/profiles.sample.yaml
+profile_id: founder_operator
+input_fixture: tests/fixtures/daily_brief_sources.json
+state_dir: state
+cache_dir: cache
+delivery_mode: dry-run

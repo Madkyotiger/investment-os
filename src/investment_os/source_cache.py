@@ -116,3 +116,30 @@ def read_record(
         "retrieved_at": retrieved_at.isoformat(),
         "freshness_status": "stale" if stale else "current",
     }, path
+
+
+def write_record_at(
+    root: Path,
+    key: str,
+    content: Any,
+    *,
+    source_url: str,
+    retrieved_at: datetime,
+) -> Path:
+    path = root / f"{key}.record.json"
+    record = {
+        "content": content,
+        "source_url": source_url,
+        "retrieved_at": retrieved_at.isoformat(),
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(record, handle, ensure_ascii=False, indent=2, sort_keys=True)
+            handle.write("\n")
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+    return path

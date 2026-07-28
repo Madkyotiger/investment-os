@@ -457,7 +457,11 @@ def scan_cxo_brief_quality(text: str) -> dict[str, int]:
         "xlk", "yoy", "qoq",
     }
     english_tokens = re.findall(r"\b[A-Za-z][A-Za-z-]{2,}\b", text_without_links)
-    result["mixed_english:prose_tokens"] = sum(1 for token in english_tokens if token.lower() not in allowed_english)
+    result["mixed_english:prose_tokens"] = sum(
+        1
+        for token in english_tokens
+        if token.lower() not in allowed_english and not (token.isupper() and 1 <= len(token) <= 5)
+    )
     ai_markers = [
         "为什么看：",
         "现在看到的证据：",
