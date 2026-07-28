@@ -109,6 +109,7 @@ def _load_candidates(path: Path) -> list[SourceCandidate]:
                 evidence_status=row.get("evidence_status", ""),
                 geography=row.get("geography", ""),
                 evidence_digest=row.get("evidence_digest", ""),
+                observed_value=row.get("observed_value", ""),
                 retrieved_at=row.get("retrieved_at", ""),
                 body_read_status=row.get("body_read_status", ""),
                 content_hash=row.get("content_hash", ""),
@@ -249,6 +250,7 @@ TITLE_REPLACEMENTS = {
     "Market proxy move is led by": "市场代理资产今日波动领头的是",
     "one-day change": "单日变化",
     "latest SEC filing is": "最新 SEC filing 是",
+    "primary filing body was retrieved": "一手 filing 正文已取得",
     "watchlist is active for CXO relevance routing": "观察名单已进入 CXO 相关性路由",
 }
 
@@ -285,6 +287,9 @@ TEXT_REPLACEMENTS = {
     "The Fed meeting calendar is the official source for upcoming policy dates; use it before interpreting rate-sensitive equity moves": "Fed 会议日程是政策日期的一手来源；解释利率敏感资产前先看它",
     "Fetch the next FOMC date, statement, minutes and dot-plot changes before writing rate-path conclusions": "先抓下一次 FOMC 日期、声明、纪要和点阵图变化，再写利率路径判断",
     "FRED latest Treasury constants": "FRED 最新美债利率",
+    "US Treasury 2-Year Constant Maturity Rate": "美国国债 2 年期收益率",
+    "US Treasury 10-Year Constant Maturity Rate": "美国国债 10 年期收益率",
+    "US Treasury 30-Year Constant Maturity Rate": "美国国债 30 年期收益率",
     "10Y-2Y spread": "10Y-2Y 利差",
     "Compare yield move with TLT/QQQ/IWM and earnings multiple compression before explaining equity moves": "先把收益率变化和 TLT、QQQ、IWM 以及估值压缩放在一起看，再解释股价变化",
     "If FRED values are stale or market proxies disagree, keep rates as background rather than causal explanation": "如果 FRED 数值过期，或市场代理资产不配合，只把利率当背景，不当因果解释",
@@ -292,6 +297,11 @@ TEXT_REPLACEMENTS = {
     "If latest filing is routine or unrelated to capex/收入/risk, downgrade it from the CXO brief": "如果最新 filing 只是例行披露，或和资本开支、收入、风险无关，就从 CXO brief 降级",
     "SEC recent submissions": "SEC 最新披露",
     "SEC recent submissions show": "SEC 最新披露显示",
+    "SEC filing body retrieved for": "SEC filing 正文已取得：",
+    "interpretation remains blocked pending relevant-section review": "仍需阅读相关章节后才能形成解释",
+    "Read the relevant business, risk, MD&A, and event sections before stating an implication": "先阅读经营、风险、管理层讨论与事件章节，再判断披露含义",
+    "Body retrieval and hashing do not prove a business implication until relevant sections are read": "只取得并校验正文，不能在读完相关章节前证明经营含义",
+    "If body retrieval or section extraction is incomplete, do not create a business interpretation": "如果正文取得或章节提取不完整，不形成经营解释",
     "latest filing": "最新 filing",
     "dated": "日期",
     " at ": "，单日 ",
@@ -451,7 +461,7 @@ def scan_cxo_brief_quality(text: str) -> dict[str, int]:
     audience_misframes = ["问团队", "公司预算", "供应商选择", "管理判断", "覆盖回执"]
     result.update({f"audience_misframe:{marker}": text.count(marker) for marker in audience_misframes})
     allowed_english = {
-        "ai", "aapl", "akshare", "alphabet", "amd", "amzn", "cdbu", "cmbu", "cloud", "cpu", "dram", "etf", "fed", "fomc",
+        "ai", "aapl", "akshare", "alphabet", "amd", "amzn", "cdbu", "cmbu", "cloud", "cpu", "dram", "etf", "fed", "filing", "fomc",
         "form", "fred", "gcp", "google", "gpu", "hpc", "intel", "iwm", "micron", "nand", "nvidia",
         "googl", "msft", "nvda", "qqq", "sec", "smh", "spy", "ssd", "tlt", "tpu", "tsmc", "tushare", "usd", "vertiv", "vrt", "workspace",
         "xlk", "yoy", "qoq",

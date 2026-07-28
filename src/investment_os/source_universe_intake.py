@@ -45,6 +45,7 @@ class SourceCandidate:
     evidence_status: str = ""
     geography: str = ""
     evidence_digest: str = ""
+    observed_value: str = ""
     retrieved_at: str = ""
     body_read_status: str = ""
     content_hash: str = ""
@@ -337,6 +338,7 @@ def _hard_source_candidates(path: Path | None) -> list[SourceCandidate]:
                 kill_signal=row.get("kill_signal", ""),
                 cannot_prove=row.get("cannot_prove", ""),
                 evidence_digest=row.get("evidence_digest", ""),
+                observed_value=row.get("observed_value", ""),
                 retrieved_at=row.get("retrieved_at", ""),
                 body_read_status=row.get("body_read_status", ""),
                 content_hash=row.get("content_hash", ""),

@@ -5,6 +5,7 @@ import json
 import os
 import tempfile
 import time
+import urllib.error
 import urllib.request
 from contextlib import contextmanager
 from fcntl import LOCK_EX, LOCK_UN, flock
@@ -49,8 +50,13 @@ def feishu_dedup_key(text: str) -> str:
 
 def _default_post(url: str, body: bytes, headers: Mapping[str, str], timeout: float) -> tuple[int, bytes]:
     request = urllib.request.Request(url, data=body, headers=dict(headers), method="POST")
-    with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310 - URL is an explicit env gate.
-        return int(response.status), response.read()
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310 - URL is an explicit env gate.
+            return int(response.status), response.read()
+    except urllib.error.HTTPError as error:
+        # HTTPError is also a readable response. Preserve status/body so the bounded
+        # retry policy can distinguish non-transient 4xx from transient upstream failures.
+        return int(error.code), error.read()
 
 
 def _enabled(value: str) -> bool:

@@ -140,6 +140,10 @@ def _collect(
     except Exception as error:
         raise DailyRunError(f"live collection failed closed: {type(error).__name__}") from error
     candidates = [_source_candidate(candidate) for candidate in raw_candidates]
+    retrieved_at = generated_at.isoformat()
+    for candidate in candidates:
+        if not candidate.retrieved_at:
+            candidate.retrieved_at = retrieved_at
     errors = _structured_errors(candidates, get_last_source_errors())
     fingerprint = _sha256_bytes(
         json.dumps([candidate.to_row() for candidate in candidates], sort_keys=True, default=str).encode("utf-8")
@@ -248,6 +252,7 @@ def _write_source_cache(out_dir: Path, candidates: Sequence[SourceCandidate], ge
                 "retrieved_at": candidate.retrieved_at,
                 "evidence_status": candidate.evidence_status,
                 "content_hash": candidate.content_hash,
+                "observed_value": candidate.observed_value,
             },
             source_url=candidate.source_url or f"urn:item:{candidate.item_id}",
             retrieved_at=generated_at,
@@ -318,6 +323,7 @@ def run_daily(
                     "freshness_status": candidate.freshness_status,
                     "body_read_status": candidate.body_read_status,
                     "content_hash": candidate.content_hash,
+                    "observed_value": candidate.observed_value,
                     "promotable": is_promotable(candidate.to_row()),
                     "promoted": any(item.candidate.item_id == candidate.item_id for item in items),
                 }

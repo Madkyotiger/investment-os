@@ -2,13 +2,18 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
 import investment_os.daily_runner as daily_runner
 from investment_os.daily_runner import DailyRunError, run_daily
-from investment_os.hard_source_collectors import HardSourceCandidate
+from investment_os.hard_source_collectors import (
+    HardSourceCandidate,
+    collect_fred_yield_candidates,
+    collect_sec_recent_filing_candidates,
+)
 
 
 WATCHLIST = Path("configs/watchlist.sample.yaml")
@@ -108,6 +113,63 @@ def test_live_strict_passes_when_one_usable_source_succeeds(monkeypatch, tmp_pat
     assert manifest["usable_live_sources"] == 1
     assert manifest["blocked_items"] == 1
     assert manifest["source_failure_count"] == 1
+
+
+def test_live_injected_fred_and_sec_evidence_promotes_once_then_rerun_is_quiet(monkeypatch, tmp_path: Path):
+    generated_at = datetime.now(timezone.utc)
+    source_date = generated_at.date().isoformat()
+    monkeypatch.setattr(
+        "investment_os.hard_source_collectors._fred_latest",
+        lambda series_id: (source_date, {"DGS2": 4.0, "DGS10": 4.5, "DGS30": 4.8}[series_id]),
+    )
+    monkeypatch.setattr(
+        "investment_os.hard_source_collectors._safe_sec_recent",
+        lambda: {"0": {"ticker": "ACME", "cik_str": "1234", "title": "Acme"}},
+    )
+    monkeypatch.setattr(
+        "investment_os.hard_source_collectors._latest_sec_filing_for_cik",
+        lambda _cik: {
+            "form": "8-K",
+            "filing_date": source_date,
+            "accession": "0001-02-03",
+            "primary_doc": "acme.htm",
+        },
+    )
+    monkeypatch.setattr(
+        "investment_os.hard_source_collectors._http_text",
+        lambda _url, timeout=10: "<html><body>synthetic injected filing body</body></html>",
+    )
+    fred = collect_fred_yield_candidates(generated_at)[0]
+    sec = next(
+        candidate
+        for candidate in collect_sec_recent_filing_candidates(
+            {"research": ["ACME"]},
+            generated_at,
+            symbol_metadata={"ACME": {"market": "US", "sec_filings": True}},
+        )
+        if candidate.evidence_status == "primary_body_read"
+    )
+    monkeypatch.setattr(
+        "investment_os.daily_runner.collect_hard_source_candidates",
+        lambda *_args, **_kwargs: [fred, sec],
+    )
+    monkeypatch.setattr("investment_os.daily_runner.get_last_source_errors", lambda: [])
+    state_path = tmp_path / "state.json"
+
+    first = run_daily(WATCHLIST, PROFILE, state_path, tmp_path / "live-1", strict=True)
+    second = run_daily(WATCHLIST, PROFILE, state_path, tmp_path / "live-2", strict=True)
+    first_manifest = json.loads(first.manifest_path.read_text(encoding="utf-8"))
+    second_manifest = json.loads(second.manifest_path.read_text(encoding="utf-8"))
+
+    assert first.status == "completed"
+    assert first_manifest["promoted_items"] == 2
+    assert {row["source"] for row in first_manifest["source_successes"]} == {
+        "FRED fredgraph.csv",
+        "SEC primary filing body",
+    }
+    assert all(row["retrieved_at"] for row in first_manifest["source_successes"])
+    assert second.status == "quiet"
+    assert second_manifest["promoted_items"] == 0
 
 
 def test_live_strict_fails_only_when_every_usable_source_fails(monkeypatch, tmp_path: Path):

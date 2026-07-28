@@ -46,6 +46,9 @@ def test_fred_live_candidate_uses_verified_data_when_available(monkeypatch):
     assert candidates[0].source_type == "primary_macro_fred_yields_live"
     assert candidates[0].confidence == "verified_data"
     assert "10Y-2Y spread" in candidates[0].summary
+    assert candidates[0].retrieved_at == "2026-07-08T00:00:00+00:00"
+    assert candidates[0].thesis_impact == "unknown_narrowed"
+    assert candidates[0].observed_value
 
 
 def test_fred_live_candidate_applies_yaml_stale_threshold_to_observation_dates(monkeypatch):
@@ -87,6 +90,53 @@ def test_market_move_candidate_can_be_built_from_snapshot(monkeypatch):
     assert candidates[0].tickers == "SPY,QQQ"
     assert "QQQ" in candidates[0].title
     assert "Stooq" in candidates[0].summary
+    assert candidates[0].retrieved_at == "2026-07-08T00:00:00+00:00"
+    assert candidates[0].thesis_impact == "unknown_narrowed"
+    assert candidates[0].observed_value
+    assert candidates[0].content_hash.startswith("sha256:")
+
+
+def test_market_numeric_revision_changes_structured_evidence_but_unchanged_snapshot_is_idempotent(monkeypatch):
+    snapshot = {
+        "SPY": {"date": "2026-07-07", "close": 620.0, "one_day_pct": 0.2, "sixty_day_pct": 8.0},
+        "QQQ": {"date": "2026-07-07", "close": 560.0, "one_day_pct": 1.4, "sixty_day_pct": 12.0},
+    }
+    monkeypatch.setattr("investment_os.hard_source_collectors._download_yfinance_snapshot", lambda _symbols: snapshot)
+    monkeypatch.setattr("investment_os.hard_source_collectors._download_stooq_snapshot", lambda _symbols: snapshot)
+
+    first = collect_market_move_candidates(
+        {"market_proxies": ["SPY", "QQQ"]}, datetime(2026, 7, 8, tzinfo=timezone.utc)
+    )[0]
+    unchanged = collect_market_move_candidates(
+        {"market_proxies": ["SPY", "QQQ"]}, datetime(2026, 7, 8, tzinfo=timezone.utc)
+    )[0]
+    revised_snapshot = {symbol: dict(values) for symbol, values in snapshot.items()}
+    revised_snapshot["QQQ"]["close"] = 561.25
+    monkeypatch.setattr(
+        "investment_os.hard_source_collectors._download_yfinance_snapshot", lambda _symbols: revised_snapshot
+    )
+    revised = collect_market_move_candidates(
+        {"market_proxies": ["SPY", "QQQ"]}, datetime(2026, 7, 8, tzinfo=timezone.utc)
+    )[0]
+
+    assert first.observed_value == unchanged.observed_value
+    assert first.content_hash == unchanged.content_hash
+    assert revised.observed_value != first.observed_value
+    assert revised.content_hash != first.content_hash
+
+
+def test_subthreshold_market_snapshot_does_not_claim_to_narrow_the_research_unknown(monkeypatch):
+    snapshot = {
+        "SPY": {"date": "2026-07-07", "close": 620.0, "one_day_pct": 0.2, "sixty_day_pct": 8.0},
+    }
+    monkeypatch.setattr("investment_os.hard_source_collectors._download_yfinance_snapshot", lambda _symbols: snapshot)
+    monkeypatch.setattr("investment_os.hard_source_collectors._download_stooq_snapshot", lambda _symbols: snapshot)
+
+    candidate = collect_market_move_candidates(
+        {"market_proxies": ["SPY"]}, datetime(2026, 7, 8, tzinfo=timezone.utc)
+    )[0]
+
+    assert candidate.thesis_impact == "unknown"
 
 
 def test_conflicting_market_sources_are_explicitly_mixed(monkeypatch):
@@ -197,3 +247,5 @@ def test_sec_body_candidate_retains_accession_url_and_hash(monkeypatch):
     assert body.source_url.endswith("/acme.htm")
     assert body.content_hash.startswith("sha256:")
     assert body.cannot_prove
+    assert body.retrieved_at == "2026-07-08T00:00:00+00:00"
+    assert body.thesis_impact == "unknown_narrowed"

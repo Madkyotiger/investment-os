@@ -45,6 +45,8 @@ class HardSourceCandidate:
     next_check: str = ""
     kill_signal: str = ""
     cannot_prove: str = ""
+    thesis_impact: str = "unknown"
+    observed_value: str = ""
     retrieved_at: str = ""
     body_read_status: str = ""
     content_hash: str = ""
@@ -159,6 +161,7 @@ def collect_sec_watchlist_candidates(watchlist_groups: dict[str, list[str]], gen
                 decision_usefulness=3,
                 portfolio_relevance=5 if tags else 2,
                 confidence="verified",
+                retrieved_at=generated_at.isoformat(),
                 next_check="Use the CIK to fetch recent 10-K, 10-Q, 8-K, Form 4 and 13F filing metadata.",
                 kill_signal="If SEC identity lookup fails or CIK changes, block filing interpretation until refreshed.",
             )
@@ -243,6 +246,7 @@ def collect_sec_recent_filing_candidates(
                 decision_usefulness=4,
                 portfolio_relevance=5,
                 confidence="verified_metadata",
+                retrieved_at=generated_at.isoformat(),
                 next_check="Read the filing body and transcript before turning metadata into a business conclusion.",
                 kill_signal="If latest filing is routine or unrelated to capex/revenue/risk, downgrade it from the CXO brief.",
                 cannot_prove="Filing metadata proves a document exists; it does not prove the business implication.",
@@ -283,6 +287,7 @@ def collect_sec_recent_filing_candidates(
                 decision_usefulness=4,
                 portfolio_relevance=5,
                 confidence="verified_body_retrieval",
+                thesis_impact="unknown_narrowed",
                 next_check="Read the relevant business, risk, MD&A, and event sections before stating an implication.",
                 kill_signal="If body retrieval or section extraction is incomplete, do not create a business interpretation.",
                 cannot_prove="Body retrieval and hashing do not prove a business implication until relevant sections are read.",
@@ -340,6 +345,7 @@ def collect_fred_yield_candidates(generated_at: datetime) -> list[HardSourceCand
     content_hash = "sha256:" + hashlib.sha256(
         json.dumps(latest, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
+    observed_value = json.dumps(latest, sort_keys=True, separators=(",", ":"))
     return [HardSourceCandidate(
         item_id="primary_macro:fred_yield_curve_live",
         lane="macro_regime",
@@ -353,6 +359,9 @@ def collect_fred_yield_candidates(generated_at: datetime) -> list[HardSourceCand
         source_url="https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS2,DGS10,DGS30",
         source_authority=5, freshness=1 if freshness_status == "stale" else 5, evidence_change=4, magnitude=4, novelty=3, decision_usefulness=5, portfolio_relevance=4,
         confidence="verified_data",
+        thesis_impact="unknown_narrowed",
+        observed_value=observed_value,
+        retrieved_at=generated_at.isoformat(),
         next_check="Compare yield move with TLT/QQQ/IWM and earnings multiple compression before explaining equity moves.",
         kill_signal="If FRED values are stale or market proxies disagree, keep rates as background rather than causal explanation.",
         cannot_prove="Yield levels alone do not prove equity direction or sector causality.",
@@ -471,8 +480,16 @@ def collect_market_move_candidates(watchlist_groups: dict[str, list[str]], gener
         )
     ranked = sorted(snapshots.items(), key=lambda item: abs(float(item[1].get("one_day_pct", 0))), reverse=True)
     top_symbol, top = ranked[0]
+    top_one_day_move = abs(float(top.get("one_day_pct", 0)))
     summary = "; ".join(f"{symbol}: close {data['close']}, 1D {data['one_day_pct']}%, 60D {data['sixty_day_pct']}%" for symbol, data in ranked[:5])
     summary = f"{summary}. {cross_check_note}"
+    observed_value = json.dumps(snapshots, sort_keys=True, separators=(",", ":"))
+    evidence_payload = json.dumps(
+        {"primary": snapshots, "secondary": secondary},
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    content_hash = "sha256:" + hashlib.sha256(evidence_payload.encode("utf-8")).hexdigest()
     return [HardSourceCandidate(
         item_id="market_live:proxy_moves",
         lane="market_action",
@@ -485,10 +502,14 @@ def collect_market_move_candidates(watchlist_groups: dict[str, list[str]], gener
         themes="market_proxies",
         source_url="https://query1.finance.yahoo.com/; https://stooq.com/",
         source_authority=4 if confidence == "market_data_cross_checked" else 3, freshness=5,
-        evidence_change=4 if abs(float(top.get("one_day_pct", 0))) >= 1 else 2,
-        magnitude=4 if abs(float(top.get("one_day_pct", 0))) >= 1 else 2,
+        evidence_change=4 if top_one_day_move >= 1 else 2,
+        magnitude=4 if top_one_day_move >= 1 else 2,
         novelty=3, decision_usefulness=4, portfolio_relevance=4,
         confidence=confidence,
+        thesis_impact="unknown_narrowed" if top_one_day_move >= 1 else "unknown",
+        observed_value=observed_value,
+        retrieved_at=generated_at.isoformat(),
+        content_hash=content_hash,
         source_errors=source_errors,
         next_check="Use market proxy moves only after cross-checking the quote source and matching them against rates, dollar and sector leadership.",
         kill_signal="If quote sources are stale, unavailable, or materially inconsistent, downgrade market-action commentary.",

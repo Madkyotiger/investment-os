@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import json
 import threading
+import urllib.error
 from concurrent.futures import ThreadPoolExecutor
+from email.message import Message
+from io import BytesIO
 from pathlib import Path
 
 import pytest
@@ -79,6 +82,38 @@ def test_transport_failure_does_not_leak_webhook(tmp_path: Path):
         )
 
     assert secret not in str(captured.value)
+
+
+@pytest.mark.parametrize(("status", "expected_calls"), [(400, 1), (503, 3)])
+def test_default_post_translates_http_error_for_status_aware_retry(
+    monkeypatch, tmp_path: Path, status: int, expected_calls: int
+):
+    calls: list[int] = []
+
+    def http_error(_request, timeout):
+        assert timeout == 10.0
+        calls.append(1)
+        raise urllib.error.HTTPError(
+            LIVE_ENV["INVESTMENT_OS_FEISHU_WEBHOOK_URL"],
+            status,
+            "upstream failure",
+            Message(),
+            BytesIO(b'{"code": 19001, "msg": "rejected"}'),
+        )
+
+    monkeypatch.setattr("investment_os.feishu_delivery.urllib.request.urlopen", http_error)
+    with pytest.raises(DeliveryError, match=f"HTTP status {status}") as captured:
+        deliver_feishu(
+            "material change",
+            brief_path=tmp_path / "brief.md",
+            dry_run=False,
+            confirm_send=True,
+            env=LIVE_ENV,
+            sleep=lambda _seconds: None,
+        )
+
+    assert len(calls) == expected_calls
+    assert LIVE_ENV["INVESTMENT_OS_FEISHU_WEBHOOK_URL"] not in str(captured.value)
 
 
 def test_preview_contains_payload_and_dedup_but_no_secret(tmp_path: Path):

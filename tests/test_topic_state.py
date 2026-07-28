@@ -308,6 +308,44 @@ def test_observed_value_revision_changes_fingerprint_but_unchanged_value_is_idem
     assert evidence_fingerprint(row) != evidence_fingerprint({**row, "observed_value": "4.30"})
 
 
+def test_market_numeric_revision_is_meaningful_while_unchanged_evidence_is_idempotent(tmp_path):
+    initial = _candidate(
+        item_id="market_live:proxy_moves",
+        lane="market_action",
+        title="Market proxy move",
+        summary="SPY close 620.0.",
+        source="yfinance + Stooq",
+        source_type="market_proxy_prices_live",
+        source_url="https://finance.example/quotes",
+        tickers="SPY",
+        thesis_key="market:cross-asset-move",
+        thesis_impact="unknown_narrowed",
+        evidence_status="cross_checked_data",
+        content_hash="sha256:market-v1",
+        observed_value='{"SPY":{"close":620.0}}',
+    )
+    state_path = tmp_path / "topic_state.json"
+    initial_csv = _write(tmp_path, [initial])
+    update_topic_state(initial_csv, state_path, tmp_path / "state", generated_at=NOW)
+
+    unchanged, _, _ = update_topic_state(initial_csv, state_path, tmp_path / "state", generated_at=NOW)
+    revised = _candidate(
+        **{
+            **initial.__dict__,
+            "summary": "SPY close revised to 621.5 on the same date.",
+            "content_hash": "sha256:market-v2",
+            "observed_value": '{"SPY":{"close":621.5}}',
+        }
+    )
+    revised_csv = _write(tmp_path, [revised])
+    changed, _, _ = update_topic_state(revised_csv, state_path, tmp_path / "state", generated_at=NOW)
+
+    assert unchanged[0].change_type == "unchanged"
+    assert unchanged[0].changed_since_last_push is False
+    assert changed[0].change_type == "unknown_narrowed"
+    assert changed[0].changed_since_last_push is True
+
+
 def test_metadata_interlude_does_not_erase_last_meaningful_evidence(tmp_path):
     body = _candidate()
     candidates_csv = _write(tmp_path, [body])
