@@ -71,6 +71,8 @@ class SourceCandidate:
         ):
             if attribute == "evidence_status" or not getattr(self, attribute):
                 setattr(self, attribute, str(enriched[attribute]))
+        if not self.freshness_status:
+            self.freshness_status = "stale" if self.evidence_status == "stale" else "current"
 
     @property
     def total_score(self) -> int:

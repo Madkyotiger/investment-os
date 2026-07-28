@@ -142,6 +142,32 @@ def enrich_candidate_row(row: Mapping[str, object]) -> dict[str, object]:
     return enriched
 
 
+def is_promotable(row: Mapping[str, object]) -> bool:
+    enriched = enrich_candidate_row(row)
+    evidence_status = _text(enriched, "evidence_status")
+    if evidence_status in {
+        "source_target_only",
+        "primary_metadata_only",
+        "mixed_sources",
+        "stale",
+        "unavailable",
+    }:
+        return False
+    required = ("item_id", "lane", "title", "summary", "source", "as_of_date")
+    if any(not _text(enriched, field) for field in required):
+        return False
+    synthetic = "synthetic" in _text(enriched, "source").lower() or _text(enriched, "source_type").startswith("demo_")
+    if not _text(enriched, "source_url") and not synthetic:
+        return False
+    if evidence_status == "primary_body_read":
+        return bool(
+            _text(enriched, "body_read_status") == "read"
+            and _text(enriched, "content_hash")
+            and _text(enriched, "source_url")
+        ) or _text(enriched, "body_read_status") == "legacy_read"
+    return True
+
+
 def evidence_fingerprint(row: Mapping[str, object]) -> str:
     enriched = enrich_candidate_row(row)
     payload = {

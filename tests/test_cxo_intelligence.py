@@ -304,3 +304,48 @@ def test_theme_item_id_cannot_invent_an_annual_report_claim():
     assert "Micron 年报已经" not in brief
     assert "DRAM/NAND" not in brief
     assert "Only an unverified theme note is available" in brief
+
+
+def test_brief_deduplicates_repeated_evidence_fingerprints_and_caps_at_five():
+    profile = load_profile(PROFILE, "founder_operator")
+    candidates = []
+    for index in range(7):
+        candidates.append(
+            _candidate(
+                item_id=f"company_events:ACME:{index}",
+                thesis_key=f"company:ACME:{index}",
+                title=f"ACME evidence {index}",
+                source_url=f"https://www.sec.gov/Archives/example-{index}.htm",
+                content_hash=f"sha256:{index}",
+                body_read_status="read",
+                evidence_digest=f"digest-{index}",
+            )
+        )
+    duplicate = _candidate(
+        item_id="company_events:ACME:duplicate",
+        thesis_key="company:ACME:duplicate",
+        content_hash="sha256:0",
+        body_read_status="read",
+        evidence_digest="digest-0",
+    )
+    duplicate.source_url = candidates[0].source_url
+
+    items = build_cxo_brief_items(candidates + [duplicate], profile, max_items=20)
+
+    assert len(items) == 5
+
+
+def test_reader_output_preserves_evidence_and_freshness_state():
+    profile = load_profile(PROFILE, "founder_operator")
+    candidate = _candidate(
+        body_read_status="read",
+        content_hash="sha256:abc",
+        freshness_status="current",
+        evidence_status="primary_body_read",
+    )
+    brief = render_cxo_brief(build_cxo_brief_items([candidate], profile), profile)
+
+    assert "证据状态：一手正文已读" in brief
+    assert "新鲜度：当前" in brief
+    assert "另一个需要保留的解释是" in brief
+    assert "[来源]" in brief

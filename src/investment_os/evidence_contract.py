@@ -56,6 +56,8 @@ def normalize_evidence_status(row: Mapping[str, object]) -> str:
         return "stale"
     if explicit == "unavailable":
         return "unavailable"
+    if explicit in {"source_target_only", "primary_metadata_only", "mixed_sources"}:
+        return explicit
 
     market_source = source_type in {
         "market_proxy_prices_live",
@@ -81,8 +83,6 @@ def normalize_evidence_status(row: Mapping[str, object]) -> str:
         return "primary_metadata_only"
     if source_type in {"primary_macro_calendar", "primary_macro_rates", "watchlist_config"}:
         return "source_target_only"
-    if explicit in EVIDENCE_STATUSES:
-        return explicit
     if source_type.startswith("primary_") and source_url and as_of_date:
         return "single_source_data"
     if source and source_type and as_of_date:

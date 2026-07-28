@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 import yaml
 
 from .pipeline import FORBIDDEN_DECISION_WORDS
+from .judgment_kernel import evidence_fingerprint, is_promotable
 from .source_universe_intake import SourceCandidate, rank_source_candidates
 from .topic_state import TopicChange, parse_generated_at
 from .us_china_pilot import scan_boundary, scan_external_note_quality
@@ -108,6 +109,10 @@ def _load_candidates(path: Path) -> list[SourceCandidate]:
                 evidence_status=row.get("evidence_status", ""),
                 geography=row.get("geography", ""),
                 evidence_digest=row.get("evidence_digest", ""),
+                retrieved_at=row.get("retrieved_at", ""),
+                body_read_status=row.get("body_read_status", ""),
+                content_hash=row.get("content_hash", ""),
+                freshness_status=row.get("freshness_status", ""),
             )
         )
     return candidates
@@ -158,6 +163,7 @@ def build_cxo_brief_items(
 
     items: list[CXOBriefItem] = []
     seen_theses: set[str] = set()
+    seen_fingerprints: set[str] = set()
     blocked_statuses = {
         "primary_metadata_only",
         "source_target_only",
@@ -166,16 +172,20 @@ def build_cxo_brief_items(
         "mixed_sources",
     }
     for candidate in candidates:
-        if candidate.evidence_status in blocked_statuses:
+        if candidate.evidence_status in blocked_statuses or not is_promotable(candidate.to_row()):
             continue
         if meaningful_ids is not None and candidate.item_id not in meaningful_ids:
             continue
         if candidate.thesis_key in seen_theses:
             continue
+        fingerprint = evidence_fingerprint(candidate.to_row())
+        if fingerprint in seen_fingerprints:
+            continue
         relevance, reason = score_cxo_relevance(candidate, profile)
         if relevance <= 1 and candidate.decision_usefulness < 4:
             continue
         seen_theses.add(candidate.thesis_key)
+        seen_fingerprints.add(fingerprint)
         items.append(CXOBriefItem(candidate=candidate, cxo_relevance=relevance, cxo_reason=reason))
     return sorted(
         items,
@@ -187,7 +197,7 @@ def build_cxo_brief_items(
             item.candidate.portfolio_relevance,
         ),
         reverse=True,
-    )[:max_items]
+    )[: min(max_items, 5)]
 
 
 def render_coverage_receipt(
@@ -378,6 +388,12 @@ def render_cxo_brief(
         return "\n".join(lines)
 
     lines: list[str] = ["# 个人投研快扫", ""]
+    evidence_labels = {
+        "primary_body_read": "一手正文已读",
+        "cross_checked_data": "二源核验数据",
+        "single_source_data": "单源数据",
+    }
+    freshness_labels = {"current": "当前", "stale": "过期"}
     for item in items[:5]:
         cand = item.candidate
         title = _zh(cand.title).rstrip("。.")
@@ -406,6 +422,9 @@ def render_cxo_brief(
             lines.extend(["", _clean_cn_punctuation("".join(second_paragraph))])
         if cand.source_url:
             lines.extend(["", f"[来源]({cand.source_url})"])
+        evidence_label = evidence_labels.get(cand.evidence_status, cand.evidence_status)
+        freshness_label = freshness_labels.get(cand.freshness_status, cand.freshness_status or "未知")
+        lines.extend(["", f"证据状态：{evidence_label}；新鲜度：{freshness_label}；资料日期：{cand.as_of_date}。"])
         lines.append("")
 
     lines.append(f"资料截至：{local_date}。只用于个人投资研究与风险判断，不是交易建议。")

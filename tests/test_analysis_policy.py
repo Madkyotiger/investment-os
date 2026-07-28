@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from investment_os.judgment_kernel import is_promotable
 from investment_os.pipeline import FORBIDDEN_DECISION_WORDS, SymbolConfig, analyze_history, load_watchlist, render_report
 
 
@@ -78,3 +79,28 @@ def test_load_watchlist_preserves_detailed_symbol_schema(tmp_path):
     _, symbols = load_watchlist(path)
 
     assert symbols == [SymbolConfig(symbol="AAPL", name="Apple", market="US", asset_class="equity")]
+
+
+def test_promotion_policy_fails_closed_for_targets_stale_metadata_and_missing_url():
+    base = {
+        "item_id": "company:ACME:event",
+        "lane": "company_events",
+        "title": "Verified event",
+        "summary": "A primary document changed.",
+        "source": "SEC filing body",
+        "source_type": "primary_filing_body_read",
+        "source_url": "https://www.sec.gov/example.htm",
+        "as_of_date": "2026-07-03",
+        "body_read_status": "read",
+        "content_hash": "sha256:abc",
+        "evidence_status": "primary_body_read",
+    }
+    assert is_promotable(base)
+    for updates in (
+        {"evidence_status": "source_target_only"},
+        {"evidence_status": "stale"},
+        {"evidence_status": "primary_metadata_only"},
+        {"source_url": ""},
+        {"content_hash": ""},
+    ):
+        assert not is_promotable({**base, **updates})

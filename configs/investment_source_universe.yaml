@@ -71,6 +71,10 @@ daily_selection:
     - uncheckable_opinion
     - repeated_theme_without_new_evidence
     - trade_instruction
+    - source_target_only
+    - primary_metadata_only
+    - stale_as_current
+    - repeated_evidence_fingerprint
 output_rule: "Daily brief should cover the top source-backed changes across lanes; detailed pack expands only the items with enough evidence or enough unresolved risk to deserve time."
 china_official_source_targets:
   coverage_status: incomplete
