@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -16,6 +17,8 @@ from .http_client import HttpClient, HttpRequestError
 
 _HTTP_CLIENT = HttpClient()
 _LAST_SOURCE_ERRORS: list[dict[str, object]] = []
+RELEVANT_SEC_FORMS = frozenset({"10-K", "10-Q", "8-K", "4"})
+BUSINESS_FILING_FORMS = frozenset({"10-K", "10-Q", "8-K"})
 
 
 @dataclass
@@ -47,6 +50,7 @@ class HardSourceCandidate:
     freshness_status: str = "current"
     evidence_status: str = ""
     source_errors: list[dict[str, object]] = field(default_factory=list)
+    accession_number: str = ""
 
     def __post_init__(self) -> None:
         self.body_read_status = infer_body_read_status(
@@ -163,25 +167,33 @@ def _latest_sec_filing_for_cik(cik: str) -> dict[str, str] | None:
     dates = recent.get("filingDate", [])
     accessions = recent.get("accessionNumber", [])
     primary_docs = recent.get("primaryDocument", [])
-    if not forms or not dates:
-        return None
-    return {
-        "form": str(forms[0]),
-        "filing_date": str(dates[0]),
-        "accession": str(accessions[0]) if accessions else "",
-        "primary_doc": str(primary_docs[0]) if primary_docs else "",
-    }
+    for index, form in enumerate(forms):
+        if str(form) not in RELEVANT_SEC_FORMS:
+            continue
+        return {
+            "form": str(form),
+            "filing_date": str(dates[index]) if index < len(dates) else "",
+            "accession": str(accessions[index]) if index < len(accessions) else "",
+            "primary_doc": str(primary_docs[index]) if index < len(primary_docs) else "",
+        }
+    return None
 
 
 def collect_sec_recent_filing_candidates(watchlist_groups: dict[str, list[str]], generated_at: datetime, max_symbols: int = 8) -> list[HardSourceCandidate]:
-    symbols = [symbol for group in ("core_us", "ai_infra") for symbol in watchlist_groups.get(group, [])]
+    symbols = sorted(
+        {
+            symbol.upper()
+            for symbol in _flatten_watchlist(watchlist_groups)
+            if symbol and symbol.replace("-", "").isalpha()
+        }
+    )
     sec_map = _safe_sec_recent()
     cik_by_ticker = {str(row.get("ticker", "")).upper(): str(row.get("cik_str", "")) for row in sec_map.values()}
     candidates: list[HardSourceCandidate] = []
     for ticker in symbols[:max_symbols]:
         cik = cik_by_ticker.get(ticker.upper(), "")
         latest = _latest_sec_filing_for_cik(cik)
-        if not latest:
+        if not latest or latest["form"] not in RELEVANT_SEC_FORMS:
             continue
         accession_path = latest["accession"].replace("-", "")
         source_url = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{accession_path}/{latest['primary_doc']}" if cik and latest["accession"] and latest["primary_doc"] else "https://data.sec.gov/submissions/"
@@ -209,6 +221,50 @@ def collect_sec_recent_filing_candidates(watchlist_groups: dict[str, list[str]],
                 next_check="Read the filing body and transcript before turning metadata into a business conclusion.",
                 kill_signal="If latest filing is routine or unrelated to capex/revenue/risk, downgrade it from the CXO brief.",
                 cannot_prove="Filing metadata proves a document exists; it does not prove the business implication.",
+                accession_number=latest["accession"],
+            )
+        )
+        if latest["form"] not in BUSINESS_FILING_FORMS or not source_url.startswith("https://www.sec.gov/Archives/"):
+            continue
+        try:
+            body = _http_text(source_url, timeout=12)
+        except HttpRequestError as error:
+            _record_source_error(error)
+            continue
+        if not body.strip():
+            continue
+        content_hash = "sha256:" + hashlib.sha256(body.encode("utf-8")).hexdigest()
+        candidates.append(
+            HardSourceCandidate(
+                item_id=f"primary_sec:{ticker}:{latest['accession']}:body",
+                lane="company_events",
+                title=f"{ticker} {latest['form']} primary filing body was retrieved",
+                summary=(
+                    f"SEC filing body retrieved for {ticker} {latest['form']} dated "
+                    f"{latest['filing_date']}; interpretation remains blocked pending relevant-section review."
+                ),
+                source="SEC primary filing body",
+                source_type="primary_filing_body_read",
+                as_of_date=latest["filing_date"],
+                retrieved_at=generated_at.isoformat(),
+                tickers=ticker,
+                themes=",".join(tags),
+                source_url=source_url,
+                source_authority=5,
+                freshness=5,
+                evidence_change=4,
+                magnitude=3,
+                novelty=3,
+                decision_usefulness=4,
+                portfolio_relevance=5,
+                confidence="verified_body_retrieval",
+                next_check="Read the relevant business, risk, MD&A, and event sections before stating an implication.",
+                kill_signal="If body retrieval or section extraction is incomplete, do not create a business interpretation.",
+                cannot_prove="Body retrieval and hashing do not prove a business implication until relevant sections are read.",
+                body_read_status="read",
+                content_hash=content_hash,
+                evidence_status="primary_body_read",
+                accession_number=latest["accession"],
             )
         )
     return candidates

@@ -5,6 +5,7 @@ from investment_os.hard_source_collectors import (
     collect_fred_yield_candidates,
     collect_hard_source_candidates,
     collect_market_move_candidates,
+    collect_sec_recent_filing_candidates,
     write_hard_source_candidates,
 )
 
@@ -88,3 +89,83 @@ def test_hard_source_rows_include_retrieval_and_body_contract_fields():
     assert candidates
     assert all(candidate.retrieved_at for candidate in candidates)
     assert all(candidate.body_read_status for candidate in candidates)
+
+
+def test_sec_symbols_do_not_depend_on_hardcoded_group_names(monkeypatch):
+    monkeypatch.setattr(
+        "investment_os.hard_source_collectors._safe_sec_recent",
+        lambda: {"0": {"ticker": "ACME", "cik_str": "1234", "title": "Acme"}},
+    )
+    monkeypatch.setattr(
+        "investment_os.hard_source_collectors._latest_sec_filing_for_cik",
+        lambda _cik: {
+            "form": "10-Q",
+            "filing_date": "2026-07-07",
+            "accession": "0001-02-03",
+            "primary_doc": "acme.htm",
+        },
+    )
+    monkeypatch.setattr(
+        "investment_os.hard_source_collectors._http_text",
+        lambda _url, timeout=10: "<html><body>synthetic filing body</body></html>",
+    )
+
+    candidates = collect_sec_recent_filing_candidates(
+        {"custom_research": ["ACME"]}, datetime(2026, 7, 8, tzinfo=timezone.utc)
+    )
+
+    assert {candidate.tickers for candidate in candidates} == {"ACME"}
+    assert any(candidate.evidence_status == "primary_body_read" for candidate in candidates)
+
+
+def test_sec_collector_filters_irrelevant_forms(monkeypatch):
+    monkeypatch.setattr(
+        "investment_os.hard_source_collectors._safe_sec_recent",
+        lambda: {"0": {"ticker": "ACME", "cik_str": "1234", "title": "Acme"}},
+    )
+    monkeypatch.setattr(
+        "investment_os.hard_source_collectors._latest_sec_filing_for_cik",
+        lambda _cik: {
+            "form": "S-1",
+            "filing_date": "2026-07-07",
+            "accession": "0001-02-03",
+            "primary_doc": "acme.htm",
+        },
+    )
+
+    assert collect_sec_recent_filing_candidates(
+        {"custom_research": ["ACME"]}, datetime(2026, 7, 8, tzinfo=timezone.utc)
+    ) == []
+
+
+def test_sec_body_candidate_retains_accession_url_and_hash(monkeypatch):
+    monkeypatch.setattr(
+        "investment_os.hard_source_collectors._safe_sec_recent",
+        lambda: {"0": {"ticker": "ACME", "cik_str": "1234", "title": "Acme"}},
+    )
+    monkeypatch.setattr(
+        "investment_os.hard_source_collectors._latest_sec_filing_for_cik",
+        lambda _cik: {
+            "form": "8-K",
+            "filing_date": "2026-07-07",
+            "accession": "0001-02-03",
+            "primary_doc": "acme.htm",
+        },
+    )
+    monkeypatch.setattr(
+        "investment_os.hard_source_collectors._http_text",
+        lambda _url, timeout=10: "<html><body>synthetic filing body</body></html>",
+    )
+
+    body = next(
+        candidate
+        for candidate in collect_sec_recent_filing_candidates(
+            {"research": ["ACME"]}, datetime(2026, 7, 8, tzinfo=timezone.utc)
+        )
+        if candidate.evidence_status == "primary_body_read"
+    )
+
+    assert body.accession_number == "0001-02-03"
+    assert body.source_url.endswith("/acme.htm")
+    assert body.content_hash.startswith("sha256:")
+    assert body.cannot_prove

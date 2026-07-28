@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import re
 from dataclasses import dataclass, field
@@ -712,6 +713,7 @@ def build_theme_filing_snippet_evidence(
         snippet = _select_theme_snippet(body, keywords)
         if not snippet:
             continue
+        content_hash = "sha256:" + hashlib.sha256(snippet.encode("utf-8")).hexdigest()
         evidence.append(EvidenceItem(
             symbol=symbol,
             category="filing_theme_snippet",
@@ -722,6 +724,9 @@ def build_theme_filing_snippet_evidence(
             freshness="annual_filing_theme_snippet",
             status="ok" if len(snippet) >= 160 else "partial",
             url=url,
+            body_read_status="read",
+            content_hash=content_hash,
+            cannot_prove="A keyword-selected source excerpt does not by itself prove a durable business implication.",
             note=(
                 f"theme_keywords={','.join(keywords)}; actual_title={actual_title}; accession={accession}; {cache_note}; "
                 "keyword-selected raw filing snippet for researcher review; not an interpretation or recommendation."
@@ -802,6 +807,9 @@ def fetch_filing_deep_read_evidence(symbol: str) -> tuple[list[EvidenceItem], li
             freshness="annual_filing_section",
             status="ok" if char_count > 500 else "partial",
             url=url,
+            body_read_status="read",
+            content_hash="sha256:" + hashlib.sha256(body.encode("utf-8")).hexdigest(),
+            cannot_prove="Section detection does not prove a business implication without human review.",
             note=(
                 f"actual_title={actual_title}; accession={getattr(filing, 'accession_no', '')}; {cache_note}; "
                 "content not summarized here to avoid hallucinated filing interpretation."
@@ -819,6 +827,9 @@ def fetch_filing_deep_read_evidence(symbol: str) -> tuple[list[EvidenceItem], li
                 freshness="annual_filing_excerpt",
                 status="ok" if len(excerpt) >= 160 else "partial",
                 url=url,
+                body_read_status="read",
+                content_hash="sha256:" + hashlib.sha256(excerpt.encode("utf-8")).hexdigest(),
+                cannot_prove="A raw filing excerpt does not prove the persistence or materiality of a business change.",
                 note=(
                     f"actual_title={actual_title}; accession={getattr(filing, 'accession_no', '')}; {cache_note}; "
                     "raw filing excerpt for researcher review; not an interpretation or recommendation."

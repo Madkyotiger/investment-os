@@ -265,3 +265,5 @@ def test_theme_filing_snippet_evidence_adds_three_reviewable_snippets():
     assert any("cybersecurity" in item.value for item in evidence)
     assert any("operating margin" in item.value for item in evidence)
     assert all("not an interpretation" in item.note for item in evidence)
+    assert all(item.body_read_status == "read" for item in evidence)
+    assert all(item.content_hash.startswith("sha256:") for item in evidence)
