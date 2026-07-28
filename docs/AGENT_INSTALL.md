@@ -41,7 +41,7 @@ uv run investment-os daily \
   --offline
 ```
 
-Delivery is a separate completed-brief boundary. `investment-os deliver --brief .local/agent-run/cxo_daily_brief.md --channel feishu --dry-run` writes a local preview and makes no request.
+The completed `manifest.json` and its artifact hashes are the handoff boundary. Channel selection and message delivery belong to the downstream runtime.
 
 ## Optional live market test
 
@@ -74,4 +74,4 @@ cd ..
 rm -rf investment-os
 ```
 
-Removing the checkout removes the project environment and generated output. This repository does not install services or scheduled jobs. Live delivery is disabled by default and must not be enabled during installation evaluation.
+Removing the checkout removes the project environment and generated output. This repository does not install services, scheduled jobs, or messaging integrations.

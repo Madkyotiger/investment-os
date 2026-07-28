@@ -48,11 +48,17 @@ def candidate_files() -> list[Path]:
 
 def main() -> int:
     findings: list[str] = []
+    checked = 0
     for path in candidate_files():
         rel = path.relative_to(ROOT)
         if path.is_symlink():
             findings.append(f"symlink:{rel}")
             continue
+        # `git ls-files` still lists tracked files deleted in the working tree.
+        # A release diff may intentionally delete one, so scan only paths that exist.
+        if not path.exists():
+            continue
+        checked += 1
         if rel.name in DENY_FILENAMES or any(part in DENY_PATH_PARTS for part in rel.parts):
             findings.append(f"denied_path:{rel}")
         if path.stat().st_size > 1_000_000:
@@ -72,7 +78,7 @@ def main() -> int:
         for finding in sorted(set(findings)):
             print(f"finding={finding}")
         return 1
-    print(f"public_release_guard=pass files={len(candidate_files())}")
+    print(f"public_release_guard=pass files={checked}")
     return 0
 
 

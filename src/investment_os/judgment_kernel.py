@@ -17,6 +17,7 @@ EVIDENCE_STATUS_RANK = {
     "primary_body_read": 6,
     "cross_checked_data": 4,
     "single_source_data": 3,
+    "primary_body_retrieved": 2,
     "primary_metadata_only": 2,
     "source_target_only": 1,
     "mixed_sources": 1,
@@ -150,6 +151,7 @@ def is_promotable(row: Mapping[str, object]) -> bool:
     if evidence_status in {
         "source_target_only",
         "primary_metadata_only",
+        "primary_body_retrieved",
         "mixed_sources",
         "stale",
         "unavailable",
@@ -249,8 +251,11 @@ def classify_change(
     impact = _text(enriched, "thesis_impact") or "unknown"
     fingerprint = evidence_fingerprint(enriched)
 
-    if source_type in METADATA_SOURCE_TYPES or evidence_status == "primary_metadata_only":
-        return ChangeAssessment("metadata_only", False, "只有元数据，尚未读到可解释的正文事实", fingerprint)
+    if source_type in METADATA_SOURCE_TYPES or evidence_status in {
+        "primary_metadata_only",
+        "primary_body_retrieved",
+    }:
+        return ChangeAssessment("metadata_only", False, "只有元数据或正文获取回执，尚未读到可解释的正文事实", fingerprint)
     if source_type in BACKGROUND_SOURCE_TYPES or evidence_status in {
         "source_target_only",
         "stale",

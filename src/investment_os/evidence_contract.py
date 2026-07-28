@@ -7,6 +7,7 @@ EVIDENCE_STATUSES = frozenset(
     {
         "source_target_only",
         "primary_metadata_only",
+        "primary_body_retrieved",
         "primary_body_read",
         "single_source_data",
         "cross_checked_data",
@@ -56,7 +57,12 @@ def normalize_evidence_status(row: Mapping[str, object]) -> str:
         return "stale"
     if explicit == "unavailable":
         return "unavailable"
-    if explicit in {"source_target_only", "primary_metadata_only", "mixed_sources"}:
+    if explicit in {
+        "source_target_only",
+        "primary_metadata_only",
+        "primary_body_retrieved",
+        "mixed_sources",
+    }:
         return explicit
 
     market_source = source_type in {
@@ -71,12 +77,23 @@ def normalize_evidence_status(row: Mapping[str, object]) -> str:
             return "cross_checked_data"
         return "single_source_data" if source and as_of_date else "unavailable"
 
-    filing_body = source_type == "primary_filing_body_read" or explicit == "primary_body_read"
+    # A retrieval event cannot self-upgrade into a read event. Callers must use
+    # a read-specific source type after they have actually inspected relevant sections.
+    if source_type == "primary_filing_body_retrieved":
+        if source_url and content_hash:
+            return "primary_body_retrieved"
+        return "primary_metadata_only"
+
+    filing_body = source_type == "primary_filing_body_read"
     if filing_body:
+        if body_read_status == "retrieved" and source_url and content_hash:
+            return "primary_body_retrieved"
         if body_read_status == "read" and source_url and content_hash:
             return "primary_body_read"
         if (raw_explicit == "primary_read" or body_read_status == "legacy_read") and source_url:
             return "primary_body_read"
+        return "primary_metadata_only"
+    if explicit == "primary_body_read" or raw_explicit == "primary_read":
         return "primary_metadata_only"
 
     if source_type in {"primary_sec_recent_filing", "primary_sec_identity"}:
@@ -91,6 +108,8 @@ def normalize_evidence_status(row: Mapping[str, object]) -> str:
 
 
 def infer_body_read_status(source_type: str, content_hash: str, current: str = "") -> str:
+    if source_type == "primary_filing_body_retrieved":
+        return "retrieved" if content_hash else "metadata_only"
     if current:
         return current
     if source_type == "primary_filing_body_read" and content_hash:

@@ -168,6 +168,7 @@ def build_cxo_brief_items(
     seen_fingerprints: set[str] = set()
     blocked_statuses = {
         "primary_metadata_only",
+        "primary_body_retrieved",
         "source_target_only",
         "stale",
         "unavailable",
@@ -401,6 +402,7 @@ def render_cxo_brief(
     lines: list[str] = ["# 个人投研快扫", ""]
     evidence_labels = {
         "primary_body_read": "一手正文已读",
+        "primary_body_retrieved": "一手正文已获取，尚未完成相关段落阅读",
         "cross_checked_data": "二源核验数据",
         "single_source_data": "单源数据",
     }

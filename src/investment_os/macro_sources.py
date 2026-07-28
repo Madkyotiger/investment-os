@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 import os
 import tempfile
 from dataclasses import asdict, dataclass
@@ -23,6 +24,7 @@ class MacroSeriesDefinition:
     cadence: str
     stale_after_days: int
     unit: str
+    material_change_threshold: float
 
 
 @dataclass(frozen=True)
@@ -53,12 +55,16 @@ def load_macro_series(path: Path | None = None) -> dict[str, MacroSeriesDefiniti
         raise ValueError("macro config series must be a mapping")
     definitions: dict[str, MacroSeriesDefinition] = {}
     for series_id, row in rows.items():
+        material_change_threshold = float(row["material_change_threshold"])
+        if not math.isfinite(material_change_threshold) or material_change_threshold <= 0:
+            raise ValueError(f"{series_id} material_change_threshold must be finite and positive")
         definitions[str(series_id)] = MacroSeriesDefinition(
             series_id=str(series_id),
             label=str(row["label"]),
             cadence=str(row["cadence"]),
             stale_after_days=int(row["stale_after_days"]),
             unit=str(row["unit"]),
+            material_change_threshold=material_change_threshold,
         )
     return definitions
 
@@ -108,7 +114,14 @@ def parse_latest_observation(
     rows = _valid_rows(series_id, text)
     if not rows:
         raise ValueError(f"No usable observations for {series_id}")
-    definition = definition or MacroSeriesDefinition(series_id, series_id, "unknown", 0, "unknown")
+    definition = definition or MacroSeriesDefinition(
+        series_id,
+        series_id,
+        "unknown",
+        0,
+        "unknown",
+        float("inf"),
+    )
     observation_date, level = rows[-1]
     change = level - rows[-2][1] if len(rows) >= 2 else None
     freshness_status = observation_freshness(observation_date, retrieved_at, definition)

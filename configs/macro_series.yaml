@@ -2,6 +2,8 @@ version: 1
 source: FRED
 # Daily market snapshots use calendar-day age so weekends and exchange holidays
 # remain current without allowing arbitrarily old closes into strict live runs.
+# material_change_threshold uses each series' native unit (percentage points,
+# index points, or thousands of payrolls) and gates brief-worthy change.
 market:
   stale_after_days: 5
 series:
@@ -10,43 +12,52 @@ series:
     cadence: business_daily
     stale_after_days: 5
     unit: percent
+    material_change_threshold: 0.05
   DGS10:
     label: US Treasury 10-Year Constant Maturity Rate
     cadence: business_daily
     stale_after_days: 5
     unit: percent
+    material_change_threshold: 0.05
   DGS30:
     label: US Treasury 30-Year Constant Maturity Rate
     cadence: business_daily
     stale_after_days: 5
     unit: percent
+    material_change_threshold: 0.05
   FEDFUNDS:
     label: Federal Funds Effective Rate
     cadence: monthly
     stale_after_days: 45
     unit: percent
+    material_change_threshold: 0.05
   CPIAUCSL:
     label: Consumer Price Index for All Urban Consumers
     cadence: monthly
     stale_after_days: 45
     unit: index
+    material_change_threshold: 0.1
   CPILFESL:
     label: Consumer Price Index Less Food and Energy
     cadence: monthly
     stale_after_days: 45
     unit: index
+    material_change_threshold: 0.1
   UNRATE:
     label: Unemployment Rate
     cadence: monthly
     stale_after_days: 45
     unit: percent
+    material_change_threshold: 0.1
   PAYEMS:
     label: All Employees Total Nonfarm Payrolls
     cadence: monthly
     stale_after_days: 45
     unit: thousands
+    material_change_threshold: 25
   PCEPI:
     label: Personal Consumption Expenditures Price Index
     cadence: monthly
     stale_after_days: 50
     unit: index
+    material_change_threshold: 0.1

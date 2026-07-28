@@ -41,7 +41,6 @@ class DailyRunResult:
     source_errors_path: Path
     run_state_path: Path
     topic_state_path: Path
-    delivery_preview_path: Path
 
 
 def _sha256_bytes(value: bytes) -> str:
@@ -507,7 +506,6 @@ def run_daily(
         run_state_path = staged_run_dir / "run_state.json"
         topic_changes_path = staged_run_dir / "topic_changes.json"
         topic_changes_csv_path = staged_run_dir / "topic_changes.csv"
-        delivery_preview_path = staged_run_dir / "delivery_preview.json"
         staged_state_path = staged_run_dir / "topic_state.next.json"
         staged_macro_state_path = staged_run_dir / "macro_state.next.json"
         staged_health_state_path = staged_run_dir / "source_health.next.json"
@@ -551,15 +549,7 @@ def run_daily(
                 "promoted_item_ids": [item.candidate.item_id for item in items],
             },
         )
-        _write_json(
-            delivery_preview_path,
-            {
-                "mode": "not_requested",
-                "live_delivery_enabled": False,
-                "artifact": str(out_dir / brief_path.name),
-                "message": "Daily collection never sends messages; use the separate deliver command.",
-            },
-        )
+
         _write_source_cache(staged_run_dir, candidates, generated_at)
         _atomic_write_bytes(staged_state_path, temporary_state.read_bytes())
         state_artifacts = [(state_path, staged_state_path)]
@@ -580,7 +570,6 @@ def run_daily(
             run_state_path,
             topic_changes_path,
             topic_changes_csv_path,
-            delivery_preview_path,
             *(artifact for _target, artifact in state_artifacts),
         ]
         artifacts = {path.name: _artifact_metadata(path) for path in artifact_paths}
@@ -638,7 +627,6 @@ def run_daily(
         source_receipt_path = out_dir / source_receipt_path.name
         source_errors_path = out_dir / source_errors_path.name
         run_state_path = out_dir / run_state_path.name
-        delivery_preview_path = out_dir / delivery_preview_path.name
         manifest_path = out_dir / manifest_path.name
         _run_fault_injection("pre_state_commit")
         _commit_pending_state(state_path, journal_path)
@@ -652,5 +640,4 @@ def run_daily(
         source_errors_path=source_errors_path,
         run_state_path=run_state_path,
         topic_state_path=topic_state_path,
-        delivery_preview_path=delivery_preview_path,
     )

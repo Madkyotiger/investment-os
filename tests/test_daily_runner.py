@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -11,7 +11,7 @@ import investment_os.daily_runner as daily_runner
 from investment_os.daily_runner import DailyRunError, run_daily
 from investment_os.hard_source_collectors import (
     HardSourceCandidate,
-    collect_fred_yield_candidates,
+    collect_fred_macro_candidates,
     collect_sec_recent_filing_candidates,
 )
 
@@ -132,12 +132,13 @@ def test_live_strict_passes_when_one_usable_source_succeeds(monkeypatch, tmp_pat
     assert market_failure["last_observation_status"] == "failure"
 
 
-def test_live_injected_fred_and_sec_evidence_promotes_once_then_rerun_is_quiet(monkeypatch, tmp_path: Path):
+def test_live_material_macro_promotes_while_sec_retrieval_stays_blocked(monkeypatch, tmp_path: Path):
     generated_at = datetime.now(timezone.utc)
     source_date = generated_at.date().isoformat()
+    previous_date = (generated_at.date() - timedelta(days=1)).isoformat()
     monkeypatch.setattr(
-        "investment_os.hard_source_collectors._fred_latest",
-        lambda series_id: (source_date, {"DGS2": 4.0, "DGS10": 4.5, "DGS30": 4.8}[series_id]),
+        "investment_os.hard_source_collectors._fred_series_text",
+        lambda series_id: f"observation_date,{series_id}\n{previous_date},4.0\n{source_date},4.1\n",
     )
     monkeypatch.setattr(
         "investment_os.hard_source_collectors._safe_sec_recent",
@@ -156,7 +157,14 @@ def test_live_injected_fred_and_sec_evidence_promotes_once_then_rerun_is_quiet(m
         "investment_os.hard_source_collectors._http_text",
         lambda _url, timeout=10: "<html><body>synthetic injected filing body</body></html>",
     )
-    fred = collect_fred_yield_candidates(generated_at)[0]
+    fred = next(
+        candidate
+        for candidate in collect_fred_macro_candidates(
+            generated_at,
+            state_path=tmp_path / "macro-state.json",
+        )
+        if candidate.item_id.endswith(":DGS10")
+    )
     sec = next(
         candidate
         for candidate in collect_sec_recent_filing_candidates(
@@ -164,7 +172,7 @@ def test_live_injected_fred_and_sec_evidence_promotes_once_then_rerun_is_quiet(m
             generated_at,
             symbol_metadata={"ACME": {"market": "US", "sec_filings": True}},
         )
-        if candidate.evidence_status == "primary_body_read"
+        if candidate.evidence_status == "primary_body_retrieved"
     )
     monkeypatch.setattr(
         "investment_os.daily_runner.collect_hard_source_candidates",
@@ -179,12 +187,10 @@ def test_live_injected_fred_and_sec_evidence_promotes_once_then_rerun_is_quiet(m
     second_manifest = json.loads(second.manifest_path.read_text(encoding="utf-8"))
 
     assert first.status == "completed"
-    assert first_manifest["promoted_items"] == 2
-    assert {row["source"] for row in first_manifest["source_successes"]} == {
-        "FRED fredgraph.csv",
-        "SEC primary filing body",
-    }
+    assert first_manifest["promoted_items"] == 1
+    assert {row["source"] for row in first_manifest["source_successes"]} == {"FRED fredgraph.csv"}
     assert all(row["retrieved_at"] for row in first_manifest["source_successes"])
+    assert sec.title not in first.brief_path.read_text(encoding="utf-8")
     assert second.status == "quiet"
     assert second_manifest["promoted_items"] == 0
 

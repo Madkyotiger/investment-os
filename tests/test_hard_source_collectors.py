@@ -6,7 +6,9 @@ from pathlib import Path
 
 import pytest
 
+from investment_os.evidence_contract import normalize_evidence_status
 from investment_os.hard_source_collectors import (
+    HardSourceCandidate,
     _download_yfinance_snapshot,
     get_last_source_errors,
     collect_fred_yield_candidates,
@@ -15,7 +17,7 @@ from investment_os.hard_source_collectors import (
     collect_sec_recent_filing_candidates,
     write_hard_source_candidates,
 )
-from investment_os.judgment_kernel import is_promotable
+from investment_os.judgment_kernel import classify_change, is_promotable
 
 WATCHLIST = Path("configs/watchlist.sample.yaml")
 
@@ -55,7 +57,12 @@ def test_fred_live_candidate_uses_verified_data_when_available(monkeypatch):
     assert candidates[0].confidence == "verified_data"
     assert "10Y-2Y spread" in candidates[0].summary
     assert candidates[0].retrieved_at == "2026-07-08T00:00:00+00:00"
-    assert candidates[0].thesis_impact == "unknown_narrowed"
+    assert candidates[0].thesis_impact == "unknown"
+    assert not classify_change(
+        None,
+        candidates[0].to_row(),
+        datetime(2026, 7, 8, tzinfo=timezone.utc),
+    ).meaningful_change
     assert candidates[0].observed_value
 
 
@@ -114,7 +121,8 @@ def test_market_move_candidate_can_be_built_from_snapshot(monkeypatch):
     assert "Stooq" in candidates[0].summary
     assert candidates[0].retrieved_at == "2026-07-08T00:00:00+00:00"
     assert candidates[0].thesis_impact == "unknown_narrowed"
-    assert candidates[0].observed_value
+    observed = json.loads(candidates[0].observed_value)
+    assert set(observed) == {"primary_yfinance", "secondary_stooq"}
     assert candidates[0].content_hash.startswith("sha256:")
     assert candidates[0].freshness_threshold_days == 5
 
@@ -194,6 +202,84 @@ def test_conflicting_market_sources_are_explicitly_mixed(monkeypatch):
     assert candidate.source_errors
 
 
+def test_market_cross_check_accepts_exact_three_percent_close_boundary(monkeypatch):
+    primary = {
+        "SPY": {"date": "2026-07-07", "close": 103.0, "one_day_pct": 1.0, "sixty_day_pct": 2.0},
+    }
+    secondary = {
+        "SPY": {"date": "2026-07-07", "close": 100.0, "one_day_pct": 1.0, "sixty_day_pct": 2.0},
+    }
+    monkeypatch.setattr("investment_os.hard_source_collectors._download_yfinance_snapshot", lambda _symbols: primary)
+    monkeypatch.setattr("investment_os.hard_source_collectors._download_stooq_snapshot", lambda _symbols: secondary)
+
+    candidate = collect_market_move_candidates(
+        {"market_proxies": ["SPY"]}, datetime(2026, 7, 8, tzinfo=timezone.utc)
+    )[0]
+
+    assert candidate.confidence == "market_data_cross_checked"
+    assert candidate.evidence_status == "cross_checked_data"
+
+
+def test_partial_market_cross_check_never_claims_full_basket_verification(monkeypatch):
+    primary = {
+        "SPY": {"date": "2026-07-07", "close": 620.0, "one_day_pct": 0.2, "sixty_day_pct": 8.0},
+        "QQQ": {"date": "2026-07-07", "close": 560.0, "one_day_pct": 1.4, "sixty_day_pct": 12.0},
+    }
+    secondary = {
+        "SPY": {"date": "2026-07-07", "close": 620.0, "one_day_pct": 0.2, "sixty_day_pct": 8.0},
+    }
+    monkeypatch.setattr("investment_os.hard_source_collectors._download_yfinance_snapshot", lambda _symbols: primary)
+    monkeypatch.setattr("investment_os.hard_source_collectors._download_stooq_snapshot", lambda _symbols: secondary)
+
+    candidate = collect_market_move_candidates(
+        {"market_proxies": ["SPY", "QQQ"]}, datetime(2026, 7, 8, tzinfo=timezone.utc)
+    )[0]
+
+    assert candidate.confidence == "market_data_probable"
+    assert candidate.evidence_status == "single_source_data"
+    assert "1/2" in candidate.summary
+    assert "QQQ" in candidate.summary
+
+
+def test_missing_primary_market_symbol_cannot_claim_full_basket_verification(monkeypatch):
+    primary = {
+        "SPY": {"date": "2026-07-07", "close": 620.0, "one_day_pct": 1.2, "sixty_day_pct": 8.0},
+    }
+    secondary = {
+        "SPY": {"date": "2026-07-07", "close": 619.0, "one_day_pct": 1.1, "sixty_day_pct": 7.8},
+    }
+    monkeypatch.setattr("investment_os.hard_source_collectors._download_yfinance_snapshot", lambda _symbols: primary)
+    monkeypatch.setattr("investment_os.hard_source_collectors._download_stooq_snapshot", lambda _symbols: secondary)
+
+    candidate = collect_market_move_candidates(
+        {"market_proxies": ["SPY", "QQQ"]}, datetime(2026, 7, 8, tzinfo=timezone.utc)
+    )[0]
+
+    assert candidate.confidence == "market_data_probable"
+    assert candidate.evidence_status == "single_source_data"
+    assert candidate.tickers == "SPY"
+    assert "QQQ" in candidate.summary
+
+
+def test_market_cross_check_requires_the_same_observation_date(monkeypatch):
+    primary = {
+        "SPY": {"date": "2026-07-07", "close": 620.0, "one_day_pct": 1.2, "sixty_day_pct": 8.0},
+    }
+    secondary = {
+        "SPY": {"date": "2026-06-30", "close": 620.0, "one_day_pct": 1.2, "sixty_day_pct": 8.0},
+    }
+    monkeypatch.setattr("investment_os.hard_source_collectors._download_yfinance_snapshot", lambda _symbols: primary)
+    monkeypatch.setattr("investment_os.hard_source_collectors._download_stooq_snapshot", lambda _symbols: secondary)
+
+    candidate = collect_market_move_candidates(
+        {"market_proxies": ["SPY"]}, datetime(2026, 7, 8, tzinfo=timezone.utc)
+    )[0]
+
+    assert candidate.confidence == "market_data_mixed"
+    assert candidate.evidence_status == "mixed_sources"
+    assert "date" in candidate.summary
+
+
 def test_hard_source_rows_include_retrieval_and_body_contract_fields():
     candidates = collect_hard_source_candidates(
         WATCHLIST, generated_at=datetime(2026, 7, 8, tzinfo=timezone.utc)
@@ -201,6 +287,54 @@ def test_hard_source_rows_include_retrieval_and_body_contract_fields():
     assert candidates
     assert all(candidate.retrieved_at for candidate in candidates)
     assert all(candidate.body_read_status for candidate in candidates)
+
+
+def test_retrieval_source_type_cannot_self_upgrade_to_body_read():
+    status = normalize_evidence_status(
+        {
+            "source_type": "primary_filing_body_retrieved",
+            "evidence_status": "primary_body_read",
+            "body_read_status": "read",
+            "source_url": "https://www.sec.gov/Archives/example.htm",
+            "content_hash": "sha256:retrieved-only",
+            "freshness_status": "current",
+        }
+    )
+
+    assert status == "primary_body_retrieved"
+
+    candidate = HardSourceCandidate(
+        item_id="sec:retrieval-only",
+        lane="company_events",
+        title="Retrieved filing",
+        summary="The filing was downloaded but not read.",
+        source="SEC",
+        source_type="primary_filing_body_retrieved",
+        as_of_date="2026-07-08",
+        source_url="https://www.sec.gov/Archives/example.htm",
+        content_hash="sha256:retrieved-only",
+        body_read_status="read",
+        evidence_status="primary_body_read",
+    )
+    assert candidate.body_read_status == "retrieved"
+    assert candidate.evidence_status == "primary_body_retrieved"
+    assert not is_promotable(candidate.to_row())
+
+
+def test_body_read_status_requires_a_read_specific_source_type():
+    status = normalize_evidence_status(
+        {
+            "source_type": "primary_filing_body_unverified",
+            "evidence_status": "primary_body_read",
+            "body_read_status": "read",
+            "source_url": "https://www.sec.gov/Archives/example.htm",
+            "as_of_date": "2026-07-08",
+            "content_hash": "sha256:unverified",
+            "freshness_status": "current",
+        }
+    )
+
+    assert status == "primary_metadata_only"
 
 
 def test_sec_symbols_do_not_depend_on_hardcoded_group_names(monkeypatch):
@@ -232,7 +366,9 @@ def test_sec_symbols_do_not_depend_on_hardcoded_group_names(monkeypatch):
     )
 
     assert {candidate.tickers for candidate in candidates} == {"ACME"}
-    assert any(candidate.evidence_status == "primary_body_read" for candidate in candidates)
+    body = next(candidate for candidate in candidates if candidate.evidence_status == "primary_body_retrieved")
+    assert body.body_read_status == "retrieved"
+    assert not is_promotable(body.to_row())
 
 
 def test_sec_collector_filters_irrelevant_forms(monkeypatch):
@@ -255,7 +391,7 @@ def test_sec_collector_filters_irrelevant_forms(monkeypatch):
     ) == []
 
 
-def test_sec_body_candidate_retains_accession_url_and_hash(monkeypatch):
+def test_sec_body_retrieval_retains_accession_url_and_hash_without_claiming_read(monkeypatch):
     monkeypatch.setattr(
         "investment_os.hard_source_collectors._safe_sec_recent",
         lambda: {"0": {"ticker": "ACME", "cik_str": "1234", "title": "Acme"}},
@@ -279,7 +415,7 @@ def test_sec_body_candidate_retains_accession_url_and_hash(monkeypatch):
         for candidate in collect_sec_recent_filing_candidates(
             {"research": ["ACME"]}, datetime(2026, 7, 8, tzinfo=timezone.utc)
         )
-        if candidate.evidence_status == "primary_body_read"
+        if candidate.evidence_status == "primary_body_retrieved"
     )
 
     assert body.accession_number == "0001-02-03"
@@ -287,7 +423,9 @@ def test_sec_body_candidate_retains_accession_url_and_hash(monkeypatch):
     assert body.content_hash.startswith("sha256:")
     assert body.cannot_prove
     assert body.retrieved_at == "2026-07-08T00:00:00+00:00"
-    assert body.thesis_impact == "unknown_narrowed"
+    assert body.body_read_status == "retrieved"
+    assert body.thesis_impact == "unknown"
+    assert not is_promotable(body.to_row())
 
 
 def test_old_sec_metadata_and_body_are_stale_and_nonpromotable(monkeypatch):
@@ -402,7 +540,7 @@ def test_sec_form4_metadata_does_not_block_newer_business_filing_body(monkeypatc
     )
 
     assert any("Form 4" in candidate.title or "is 4" in candidate.title for candidate in candidates)
-    body = next(candidate for candidate in candidates if candidate.evidence_status == "primary_body_read")
+    body = next(candidate for candidate in candidates if candidate.evidence_status == "primary_body_retrieved")
     assert "8-K" in body.title
     assert body.accession_number == "0001-08-01"
     assert requested_urls and requested_urls[0].endswith("/event.htm")
