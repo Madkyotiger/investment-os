@@ -158,7 +158,13 @@ def build_cxo_brief_items(
 
     items: list[CXOBriefItem] = []
     seen_theses: set[str] = set()
-    blocked_statuses = {"primary_metadata_only", "source_target_only", "config_only"}
+    blocked_statuses = {
+        "primary_metadata_only",
+        "source_target_only",
+        "stale",
+        "unavailable",
+        "mixed_sources",
+    }
     for candidate in candidates:
         if candidate.evidence_status in blocked_statuses:
             continue

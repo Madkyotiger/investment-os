@@ -7,20 +7,21 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Mapping, Sequence
 
+from .evidence_contract import normalize_evidence_status
+
 
 MEANINGFUL_IMPACTS = {"strengthened", "weakened", "unknown_narrowed", "unknown_expanded"}
 METADATA_SOURCE_TYPES = {"primary_sec_recent_filing", "primary_sec_identity"}
 BACKGROUND_SOURCE_TYPES = {"primary_macro_calendar", "primary_macro_rates", "watchlist_config"}
 EVIDENCE_STATUS_RANK = {
-    "primary_read": 6,
-    "primary_data": 5,
+    "primary_body_read": 6,
     "cross_checked_data": 4,
     "single_source_data": 3,
-    "secondary_cross_check": 3,
     "primary_metadata_only": 2,
     "source_target_only": 1,
-    "config_only": 0,
-    "unknown": 0,
+    "mixed_sources": 1,
+    "stale": 0,
+    "unavailable": 0,
 }
 
 
@@ -85,32 +86,7 @@ def infer_geography(row: Mapping[str, object]) -> str:
 
 
 def infer_evidence_status(row: Mapping[str, object]) -> str:
-    explicit = _text(row, "evidence_status")
-    source_type = _text(row, "source_type")
-    source = _text(row, "source").lower()
-    confidence = _text(row, "confidence").lower()
-    market_source = source_type in {"market_proxy_prices_live", "market_data", "china_market_data_single_source"}
-    if market_source:
-        return "cross_checked_data" if confidence == "market_data_cross_checked" else "single_source_data"
-    if explicit:
-        return explicit
-    if source_type in METADATA_SOURCE_TYPES:
-        return "primary_metadata_only"
-    if source_type == "watchlist_config":
-        return "config_only"
-    if source_type in {"primary_macro_calendar", "primary_macro_rates"}:
-        return "source_target_only"
-    if source_type == "primary_macro_fred_yields_live":
-        return "primary_data"
-    if source_type == "primary_filing_body_read":
-        return "primary_read"
-    if source_type == "theme_evidence" and any(marker in source for marker in ("annual report", "sec filing", "年报", "ir day")):
-        return "primary_read"
-    if source_type == "company_financials":
-        return "secondary_cross_check"
-    if source_type.startswith("primary_"):
-        return "primary_data"
-    return "unknown"
+    return normalize_evidence_status(row)
 
 
 def infer_research_question(row: Mapping[str, object]) -> str:
@@ -212,7 +188,12 @@ def classify_change(
 
     if source_type in METADATA_SOURCE_TYPES or evidence_status == "primary_metadata_only":
         return ChangeAssessment("metadata_only", False, "只有元数据，尚未读到可解释的正文事实", fingerprint)
-    if source_type in BACKGROUND_SOURCE_TYPES or evidence_status in {"source_target_only", "config_only"}:
+    if source_type in BACKGROUND_SOURCE_TYPES or evidence_status in {
+        "source_target_only",
+        "stale",
+        "unavailable",
+        "mixed_sources",
+    }:
         return ChangeAssessment("background_only", False, "来源目标或配置只构成背景，不构成判断变化", fingerprint)
     if not is_fresh(enriched, generated_at):
         return ChangeAssessment("background_only", False, "资料不在当前变化窗口内，只能作为研究背景", fingerprint)

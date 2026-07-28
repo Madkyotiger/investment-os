@@ -6,12 +6,14 @@ import json
 import os
 import urllib.error
 import urllib.request
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+from .evidence_contract import infer_body_read_status, normalize_evidence_status
 
 
 @dataclass
@@ -37,6 +39,18 @@ class HardSourceCandidate:
     next_check: str = ""
     kill_signal: str = ""
     cannot_prove: str = ""
+    retrieved_at: str = ""
+    body_read_status: str = ""
+    content_hash: str = ""
+    freshness_status: str = "current"
+    evidence_status: str = ""
+    source_errors: list[dict[str, object]] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        self.body_read_status = infer_body_read_status(
+            self.source_type, self.content_hash, self.body_read_status
+        )
+        self.evidence_status = normalize_evidence_status(asdict(self))
 
     def to_row(self) -> dict[str, str | int]:
         return asdict(self)
@@ -345,6 +359,16 @@ def collect_market_move_candidates(watchlist_groups: dict[str, list[str]], gener
         return []
     secondary = _download_stooq_snapshot(symbols)
     confidence, cross_check_note = _cross_check_market_snapshot(snapshots, secondary)
+    source_errors = []
+    if confidence == "market_data_mixed":
+        source_errors.append(
+            {
+                "code": "source_conflict",
+                "message": cross_check_note,
+                "source_url": "https://stooq.com/",
+                "transient": False,
+            }
+        )
     ranked = sorted(snapshots.items(), key=lambda item: abs(float(item[1].get("one_day_pct", 0))), reverse=True)
     top_symbol, top = ranked[0]
     summary = "; ".join(f"{symbol}: close {data['close']}, 1D {data['one_day_pct']}%, 60D {data['sixty_day_pct']}%" for symbol, data in ranked[:5])
@@ -365,6 +389,7 @@ def collect_market_move_candidates(watchlist_groups: dict[str, list[str]], gener
         magnitude=4 if abs(float(top.get("one_day_pct", 0))) >= 1 else 2,
         novelty=3, decision_usefulness=4, portfolio_relevance=4,
         confidence=confidence,
+        source_errors=source_errors,
         next_check="Use market proxy moves only after cross-checking the quote source and matching them against rates, dollar and sector leadership.",
         kill_signal="If quote sources are stale, unavailable, or materially inconsistent, downgrade market-action commentary.",
         cannot_prove="Price movement does not prove the cause of the move.",
@@ -467,6 +492,10 @@ def collect_hard_source_candidates(watchlist_path: Path, generated_at: datetime 
     candidates.extend(collect_fred_yield_candidates(generated_at))
     candidates.extend(collect_market_move_candidates(groups, generated_at))
     candidates.extend(collect_watchlist_relevance_candidates(groups, generated_at))
+    retrieved_at = generated_at.isoformat()
+    for candidate in candidates:
+        if not candidate.retrieved_at:
+            candidate.retrieved_at = retrieved_at
     return candidates
 
 

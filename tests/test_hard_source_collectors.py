@@ -63,3 +63,28 @@ def test_market_move_candidate_can_be_built_from_snapshot(monkeypatch):
     assert candidates[0].tickers == "SPY,QQQ"
     assert "QQQ" in candidates[0].title
     assert "Stooq" in candidates[0].summary
+
+
+def test_conflicting_market_sources_are_explicitly_mixed(monkeypatch):
+    monkeypatch.setattr(
+        "investment_os.hard_source_collectors._download_yfinance_snapshot",
+        lambda _symbols: {"SPY": {"date": "2026-07-07", "close": 100.0, "one_day_pct": 1.0, "sixty_day_pct": 2.0}},
+    )
+    monkeypatch.setattr(
+        "investment_os.hard_source_collectors._download_stooq_snapshot",
+        lambda _symbols: {"SPY": {"date": "2026-07-07", "close": 80.0, "one_day_pct": 1.0, "sixty_day_pct": 2.0}},
+    )
+    candidate = collect_market_move_candidates(
+        {"market_proxies": ["SPY"]}, datetime(2026, 7, 8, tzinfo=timezone.utc)
+    )[0]
+    assert candidate.evidence_status == "mixed_sources"
+    assert candidate.source_errors
+
+
+def test_hard_source_rows_include_retrieval_and_body_contract_fields():
+    candidates = collect_hard_source_candidates(
+        WATCHLIST, generated_at=datetime(2026, 7, 8, tzinfo=timezone.utc)
+    )
+    assert candidates
+    assert all(candidate.retrieved_at for candidate in candidates)
+    assert all(candidate.body_read_status for candidate in candidates)

@@ -302,3 +302,19 @@ def test_metadata_interlude_does_not_erase_last_meaningful_evidence(tmp_path):
 
     assert reentry_changes[0].change_type == "unchanged"
     assert reentry_changes[0].changed_since_last_push is False
+
+
+def test_stale_status_stays_diagnostic_but_cannot_be_current_fact(tmp_path):
+    stale = _candidate(
+        as_of_date="2026-07-10",
+        evidence_status="stale",
+        thesis_impact="strengthened",
+        freshness_status="stale",
+    )
+    candidates_csv = _write(tmp_path, [stale])
+    changes, _, _ = update_topic_state(
+        candidates_csv, tmp_path / "topic_state.json", tmp_path / "state", generated_at=NOW
+    )
+    assert changes[0].evidence_status == "stale"
+    assert changes[0].changed_since_last_push is False
+    assert changes[0].change_type == "background_only"
