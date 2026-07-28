@@ -6,8 +6,10 @@ import os
 import tempfile
 import time
 import urllib.request
+from contextlib import contextmanager
+from fcntl import LOCK_EX, LOCK_UN, flock
 from pathlib import Path
-from typing import Callable, Mapping
+from typing import BinaryIO, Callable, Iterator, Mapping
 
 from .delivery import DeliveryError, DeliveryResult
 
@@ -45,10 +47,10 @@ def feishu_dedup_key(text: str) -> str:
     return "sha256:" + hashlib.sha256(b"feishu\0" + encoded).hexdigest()
 
 
-def _default_post(url: str, body: bytes, headers: Mapping[str, str], timeout: float) -> int:
+def _default_post(url: str, body: bytes, headers: Mapping[str, str], timeout: float) -> tuple[int, bytes]:
     request = urllib.request.Request(url, data=body, headers=dict(headers), method="POST")
     with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310 - URL is an explicit env gate.
-        return int(response.status)
+        return int(response.status), response.read()
 
 
 def _enabled(value: str) -> bool:
@@ -69,6 +71,28 @@ def _preview_path(brief_path: Path, preview_path: Path | None) -> Path:
     return preview_path or brief_path.parent / "feishu_delivery_preview.json"
 
 
+@contextmanager
+def _exclusive_claim(path: Path) -> Iterator[BinaryIO]:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a+b") as handle:
+        flock(handle.fileno(), LOCK_EX)
+        try:
+            yield handle
+        finally:
+            flock(handle.fileno(), LOCK_UN)
+
+
+def _application_code(body: bytes) -> int:
+    try:
+        payload = json.loads(body.decode("utf-8"))
+        raw_code = payload.get("code", payload.get("StatusCode")) if isinstance(payload, dict) else None
+        if raw_code is None:
+            raise ValueError("missing application code")
+        return int(str(raw_code))
+    except (AttributeError, TypeError, ValueError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise DeliveryError("Feishu delivery returned an invalid application response") from error
+
+
 def deliver_feishu(
     text: str,
     *,
@@ -77,7 +101,7 @@ def deliver_feishu(
     confirm_send: bool = False,
     env: Mapping[str, str] | None = None,
     preview_path: Path | None = None,
-    post: Callable[[str, bytes, Mapping[str, str], float], int] | None = None,
+    post: Callable[[str, bytes, Mapping[str, str], float], tuple[int, bytes]] | None = None,
     sleep: Callable[[float], None] | None = None,
 ) -> DeliveryResult:
     environment = os.environ if env is None else env
@@ -106,32 +130,39 @@ def deliver_feishu(
     if not endpoint:
         raise DeliveryError(f"live delivery is disabled; {FEISHU_WEBHOOK_ENV} is not configured")
 
-    dedup_path = brief_path.parent / ".delivery" / "feishu_sent.json"
-    sent_keys = _load_dedup(dedup_path)
-    if dedup_key in sent_keys:
-        preview_record["status"] = "deduplicated"
-        _atomic_json(preview, preview_record)
-        return DeliveryResult("deduplicated", "feishu", preview, dedup_key, sent=False)
-
+    delivery_dir = brief_path.parent / ".delivery"
+    dedup_path = delivery_dir / "feishu_sent.json"
+    claim_path = delivery_dir / "feishu.lock"
     transport = post or _default_post
     wait = sleep or time.sleep
-    status = 0
-    for attempt in range(1, MAX_ATTEMPTS + 1):
-        try:
-            status = int(transport(endpoint, encoded, {"Content-Type": "application/json"}, 10.0))
-        except Exception:
-            if attempt == MAX_ATTEMPTS:
-                # Do not retain transport exceptions: they can contain the secret endpoint.
-                raise DeliveryError(f"Feishu delivery failed after {MAX_ATTEMPTS} bounded attempts") from None
-            wait(0.25 * (2 ** (attempt - 1)))
-            continue
-        if 200 <= status < 300:
-            sent_keys.add(dedup_key)
-            _atomic_json(dedup_path, {"sent": sorted(sent_keys)})
-            preview_record.update({"status": "sent", "sent": True, "attempts": attempt})
+    with _exclusive_claim(claim_path):
+        sent_keys = _load_dedup(dedup_path)
+        if dedup_key in sent_keys:
+            preview_record["status"] = "deduplicated"
             _atomic_json(preview, preview_record)
-            return DeliveryResult("sent", "feishu", preview, dedup_key, sent=True, attempts=attempt)
-        if status not in TRANSIENT_STATUSES or attempt == MAX_ATTEMPTS:
-            raise DeliveryError(f"Feishu delivery failed with HTTP status {status}")
-        wait(0.25 * (2 ** (attempt - 1)))
+            return DeliveryResult("deduplicated", "feishu", preview, dedup_key, sent=False)
+
+        status = 0
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            try:
+                status, response_body = transport(endpoint, encoded, {"Content-Type": "application/json"}, 10.0)
+                status = int(status)
+            except Exception:
+                if attempt == MAX_ATTEMPTS:
+                    # Do not retain transport exceptions: they can contain the secret endpoint.
+                    raise DeliveryError(f"Feishu delivery failed after {MAX_ATTEMPTS} bounded attempts") from None
+                wait(0.25 * (2 ** (attempt - 1)))
+                continue
+            if 200 <= status < 300:
+                application_code = _application_code(response_body)
+                if application_code != 0:
+                    raise DeliveryError(f"Feishu delivery failed with application code {application_code}")
+                sent_keys.add(dedup_key)
+                _atomic_json(dedup_path, {"sent": sorted(sent_keys)})
+                preview_record.update({"status": "sent", "sent": True, "attempts": attempt})
+                _atomic_json(preview, preview_record)
+                return DeliveryResult("sent", "feishu", preview, dedup_key, sent=True, attempts=attempt)
+            if status not in TRANSIENT_STATUSES or attempt == MAX_ATTEMPTS:
+                raise DeliveryError(f"Feishu delivery failed with HTTP status {status}")
+            wait(0.25 * (2 ** (attempt - 1)))
     raise DeliveryError("Feishu delivery failed within the bounded retry policy")

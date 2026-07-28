@@ -136,7 +136,9 @@ It must not tell you to buy, sell, hold, size a position, or execute a trade. Ma
 
 ## Delivery boundary
 
-Delivery accepts only a `cxo_daily_brief.md` whose bytes match the completed `manifest.json` beside it. It cannot collect sources or update topic state. Dry-run is the default and writes `feishu_delivery_preview.json` locally. Payloads over 20,000 serialized UTF-8 bytes are rejected, live attempts use at most three retries, and a local payload-derived dedup key prevents repeat live sends.
+Delivery accepts only a `cxo_daily_brief.md` whose bytes match the completed `manifest.json` beside it. It cannot collect sources or update topic state. Dry-run is the default and writes `feishu_delivery_preview.json` locally. Payloads over 20,000 serialized UTF-8 bytes are rejected, live attempts use at most three retries, and HTTP success is accepted only when the Feishu response body also carries application success code `0`.
+
+Live delivery uses an exclusive local file claim around dedup lookup, POST, and receipt write, so concurrent processes sharing the same brief directory do not both send the same payload. This is best-effort deduplication, not exactly-once delivery: if the process or host dies after Feishu accepts the POST but before the local receipt is durably written, a later retry can send a duplicate. Feishu has no transaction with the local receipt, so a human-reviewed destination must tolerate that crash window.
 
 Live Feishu sending is not part of the default workflow. It requires all three conditions: omit `--dry-run`, pass `--confirm-send`, and set `INVESTMENT_OS_ENABLE_LIVE_DELIVERY=true`; the endpoint is read only from `INVESTMENT_OS_FEISHU_WEBHOOK_URL`. Never place that value in a command, config, log, issue, or tracked file. No live send was performed for this implementation.
 

@@ -53,7 +53,7 @@ def deliver_brief(
     confirm_send: bool = False,
     env: Mapping[str, str] | None = None,
     preview_path: Path | None = None,
-    post: Callable[..., int] | None = None,
+    post: Callable[..., tuple[int, bytes]] | None = None,
     sleep: Callable[[float], None] | None = None,
 ) -> DeliveryResult:
     """Deliver only a hash-verified completed brief; never reads or updates research state."""

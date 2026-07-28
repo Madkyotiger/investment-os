@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -30,7 +32,9 @@ def test_retry_is_bounded_and_dedup_prevents_second_live_send(tmp_path: Path):
 
     def flaky_post(_url, _body, _headers, _timeout):
         calls.append(1)
-        return 503 if len(calls) < 3 else 200
+        if len(calls) < 3:
+            return 503, b'{"code": 1}'
+        return 200, b'{"code": 0, "msg": "success"}'
 
     first = deliver_feishu(
         "material change",
@@ -94,3 +98,59 @@ def test_preview_contains_payload_and_dedup_but_no_secret(tmp_path: Path):
     assert preview["dedup_key"] == feishu_dedup_key("material change")
     assert preview["payload"]["content"]["text"] == "material change"
     assert LIVE_ENV["INVESTMENT_OS_FEISHU_WEBHOOK_URL"] not in preview_text
+
+
+def test_http_2xx_application_error_never_records_dedup(tmp_path: Path):
+    brief_path = tmp_path / "brief.md"
+
+    with pytest.raises(DeliveryError, match="application code"):
+        deliver_feishu(
+            "material change",
+            brief_path=brief_path,
+            dry_run=False,
+            confirm_send=True,
+            env=LIVE_ENV,
+            post=lambda *_args: (200, b'{"code": 19001, "msg": "rejected"}'),
+        )
+
+    dedup_path = tmp_path / ".delivery" / "feishu_sent.json"
+    assert not dedup_path.exists()
+    retry = deliver_feishu(
+        "material change",
+        brief_path=brief_path,
+        dry_run=False,
+        confirm_send=True,
+        env=LIVE_ENV,
+        post=lambda *_args: (200, b'{"code": 0, "msg": "success"}'),
+    )
+    assert retry.status == "sent"
+
+
+def test_concurrent_live_delivery_claim_allows_only_one_post(tmp_path: Path):
+    brief_path = tmp_path / "brief.md"
+    first_entered = threading.Event()
+    release_first = threading.Event()
+    calls: list[int] = []
+
+    def blocking_post(_url, _body, _headers, _timeout):
+        calls.append(1)
+        first_entered.set()
+        assert release_first.wait(timeout=2)
+        return 200, b'{"code": 0, "msg": "success"}'
+
+    kwargs = {
+        "brief_path": brief_path,
+        "dry_run": False,
+        "confirm_send": True,
+        "env": LIVE_ENV,
+        "post": blocking_post,
+    }
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(deliver_feishu, "material change", **kwargs)
+        assert first_entered.wait(timeout=2)
+        second = executor.submit(deliver_feishu, "material change", **kwargs)
+        release_first.set()
+        results = [first.result(timeout=2), second.result(timeout=2)]
+
+    assert sorted(result.status for result in results) == ["deduplicated", "sent"]
+    assert calls == [1]

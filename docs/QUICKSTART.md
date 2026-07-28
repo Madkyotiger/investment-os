@@ -65,7 +65,7 @@ uv run investment-os daily \
   --strict
 ```
 
-Live collection fails closed and never substitutes synthetic observations. In strict mode, exit `2` means every usable live source failed. A blocked source target, metadata-only filing, or one failed source does not fail strict mode when another usable live source succeeded. A successful collection may still return `quiet` when no changed promotable item exists.
+Live collection fails closed and never substitutes synthetic observations. In strict mode, exit `2` means every fresh usable live source failed; a successfully fetched observation outside its configured cadence/staleness window is not usable. A blocked source target, metadata-only filing, or one failed source does not fail strict mode when another fresh usable live source succeeded. A successful collection may still return `quiet` when no changed promotable item exists.
 
 SEC requests should use `SEC_EDGAR_IDENTITY` in the environment. Do not put it in tracked files.
 
@@ -80,7 +80,9 @@ uv run investment-os deliver \
 
 Expected: exit `0`, `delivery=dry_run`, `sent=false`, and a local `feishu_delivery_preview.json`. Dry-run requires no endpoint and performs no POST. Delivery rejects drafts, incomplete runs, and briefs changed after the manifest was written. Quiet/empty completed briefs return `delivery=quiet` and do not send.
 
-Live sending remains a separately authorized operation. The code requires `--confirm-send`, `INVESTMENT_OS_ENABLE_LIVE_DELIVERY=true`, and `INVESTMENT_OS_FEISHU_WEBHOOK_URL` from the environment. Do not set those gates during evaluation.
+Live sending remains a separately authorized operation. The code requires `--confirm-send`, `INVESTMENT_OS_ENABLE_LIVE_DELIVERY=true`, and `INVESTMENT_OS_FEISHU_WEBHOOK_URL` from the environment. HTTP 2xx alone is not success; the response body must also contain Feishu application code `0`, otherwise no dedup receipt is recorded. Do not set those gates during evaluation.
+
+An exclusive local file claim serializes dedup lookup, POST, and receipt write for processes using the same brief directory. This closes the ordinary concurrent read/POST/write race but is only best-effort: a crash after Feishu accepts a POST and before the local receipt write can still cause a duplicate on retry. The transport therefore does not claim exactly-once delivery.
 
 ## Current gaps
 
