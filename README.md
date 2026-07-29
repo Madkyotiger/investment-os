@@ -87,7 +87,21 @@ uv run --frozen --isolated --link-mode copy --extra market \
 
 Strict mode exits non-zero when no symbol has usable fresh-enough data. A generated file is not proof that collection succeeded. The bundled watchlist leaves its `source: china` rows as explicit gaps during this market-only check; it does not send those symbols to Yahoo.
 
-Some SEC paths require a valid identity string:
+For a recurring live daily runtime, keep only the `market` extra in the project environment and probe the actual channels separately from package imports:
+
+```bash
+uv sync --frozen --extra dev --extra market
+cp .env.example .env
+# Replace the SEC placeholder in .env with a real contact identity.
+set -a; source .env; set +a
+uv run investment-os doctor --probe daily
+```
+
+For an unattended local runtime, `scripts/run_daily_local.sh` first reads `${XDG_CONFIG_HOME:-$HOME/.config}/investment-os/runtime.env` (or `INVESTMENT_OS_ENV_FILE`) and falls back to the ignored checkout `.env`.
+
+`doctor` reports package `importable`, connector `configured`, and `live_probe` as separate facts. OpenBB, FinanceToolkit, edgartools, AKShare, and Tushare are not required by `investment-os daily`. Stooq is a best-effort second-source check: a correct adapter path or HTTP 200 is not a successful probe unless usable CSV rows are parsed. The daily runner remains single-source and says so when Stooq is blocked or incomplete.
+
+SEC requests require a valid identity string. It is contact configuration, not an API secret, but real personal contact details still belong in ignored local environment files rather than the public repository:
 
 ```bash
 export SEC_EDGAR_IDENTITY="Your Name your-email@example.com"

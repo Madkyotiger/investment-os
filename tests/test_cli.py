@@ -1,11 +1,43 @@
+import json
 from pathlib import Path
 
 from investment_os.cli import main
 
 
-def test_doctor_passes(capsys):
+def test_doctor_distinguishes_package_imports_from_connector_readiness(monkeypatch, capsys):
+    monkeypatch.setenv("SEC_EDGAR_IDENTITY", "Investment OS research contact@example.com")
     assert main(["doctor"]) == 0
-    assert '"python_supported": true' in capsys.readouterr().out
+    output = capsys.readouterr().out
+    payload = json.loads(output)
+
+    assert payload["python_supported"] is True
+    assert "optional" not in payload
+    assert isinstance(payload["optional_packages"]["yfinance"]["importable"], bool)
+    assert payload["connectors"]["sec"]["configured"] is True
+    assert payload["connectors"]["sec"]["live_probe"] == "not_run"
+    assert "contact@example.com" not in output
+
+
+def test_doctor_can_probe_daily_connectors_without_turning_best_effort_stooq_into_a_pass(
+    monkeypatch, capsys
+):
+    monkeypatch.setattr(
+        "investment_os.cli._probe_daily_connectors",
+        lambda: {
+            "yfinance": "available",
+            "sec": "available",
+            "fred": "available",
+            "stooq": "unavailable",
+        },
+        raising=False,
+    )
+
+    assert main(["doctor", "--probe", "daily"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["daily_readiness"] == "ready_with_degraded_cross_check"
+    assert payload["connectors"]["stooq"]["live_probe"] == "unavailable"
+    assert payload["connectors"]["stooq"]["required_for_daily"] is False
 
 
 def test_offline_demo_writes_complete_artifact_set(tmp_path):

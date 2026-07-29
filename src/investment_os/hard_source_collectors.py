@@ -630,23 +630,36 @@ def _download_yfinance_snapshot(symbols: list[str]) -> dict[str, dict[str, float
 
 
 
-def _stooq_symbol(symbol: str) -> str:
+def _stooq_symbol(symbol: str) -> str | None:
     mapping = {"SPY": "spy.us", "QQQ": "qqq.us", "IWM": "iwm.us", "XLK": "xlk.us", "SMH": "smh.us", "TLT": "tlt.us", "UUP": "uup.us"}
-    return mapping.get(symbol.upper(), f"{symbol.lower()}.us")
+    normalized = symbol.strip().upper()
+    if normalized in mapping:
+        return mapping[normalized]
+    if normalized.endswith(".HK"):
+        code = normalized.removesuffix(".HK")
+        return f"{int(code)}.hk" if code.isdigit() else None
+    if "." in normalized or not normalized.replace("-", "").isalpha():
+        return None
+    return f"{normalized.lower()}.us"
 
 
 def _download_stooq_snapshot(symbols: list[str]) -> dict[str, dict[str, float | str]]:
     snapshots: dict[str, dict[str, float | str]] = {}
+    unusable: list[tuple[str, str]] = []
     for symbol in symbols:
-        url = f"https://stooq.com/q/d/l/?s={_stooq_symbol(symbol)}&i=d"
+        stooq_symbol = _stooq_symbol(symbol)
+        if not stooq_symbol:
+            continue
+        url = f"https://stooq.com/q/d/l/?s={stooq_symbol}&i=d"
         try:
             text = _http_text(url, timeout=10)
             rows = list(csv.DictReader(text.splitlines()))
-        except HttpRequestError as error:
-            _record_source_error(error)
+        except HttpRequestError:
+            unusable.append((symbol, url))
             continue
         clean = [row for row in rows if _safe_float(row.get("Close")) is not None]
         if len(clean) < 5:
+            unusable.append((symbol, url))
             continue
         last_row = clean[-1]
         prev_row = clean[-2]
@@ -660,6 +673,19 @@ def _download_stooq_snapshot(symbols: list[str]) -> dict[str, dict[str, float | 
             "one_day_pct": round((last / prev - 1) * 100, 2) if prev else 0.0,
             "sixty_day_pct": round((last / base_60 - 1) * 100, 2) if base_60 else 0.0,
         }
+    if unusable:
+        symbols_text = ", ".join(symbol for symbol, _url in unusable)
+        _LAST_SOURCE_ERRORS.append(
+            {
+                "source": "Stooq",
+                "lane": "market_action",
+                "code": "invalid_response",
+                "message": f"Stooq returned no usable daily CSV rows for {len(unusable)} symbol(s): {symbols_text}",
+                "source_url": unusable[0][1],
+                "affected_count": len(unusable),
+                "transient": True,
+            }
+        )
     return snapshots
 
 
@@ -709,8 +735,38 @@ def _cross_check_market_snapshot(
         f"Stooq 二源行情已按同一日期覆盖全部 {checked} 个代理资产，收盘价未见超过 3% 的偏差。",
     )
 
-def collect_market_move_candidates(watchlist_groups: dict[str, list[str]], generated_at: datetime) -> list[HardSourceCandidate]:
-    symbols = watchlist_groups.get("market_proxies", [])[:]
+def _market_price_symbols(
+    watchlist_groups: dict[str, list[str]],
+    symbol_metadata: dict[str, dict[str, object]] | None,
+) -> list[str]:
+    symbols: list[str] = []
+    seen: set[str] = set()
+
+    def add(symbol: str) -> None:
+        normalized = symbol.upper()
+        if normalized not in seen:
+            seen.add(normalized)
+            symbols.append(symbol)
+
+    for symbol in watchlist_groups.get("market_proxies", []):
+        add(symbol)
+    if symbol_metadata:
+        for group_symbols in watchlist_groups.values():
+            for symbol in group_symbols:
+                metadata = symbol_metadata.get(symbol.upper(), {})
+                market = str(metadata.get("market", "")).upper()
+                asset_type = str(metadata.get("asset_type", "equity")).lower()
+                if market in {"US", "HK"} and asset_type in {"equity", "etf", "index"}:
+                    add(symbol)
+    return symbols
+
+
+def collect_market_move_candidates(
+    watchlist_groups: dict[str, list[str]],
+    generated_at: datetime,
+    symbol_metadata: dict[str, dict[str, object]] | None = None,
+) -> list[HardSourceCandidate]:
+    symbols = _market_price_symbols(watchlist_groups, symbol_metadata)
     if not symbols:
         return []
     snapshots = _download_yfinance_snapshot(symbols)
@@ -750,13 +806,13 @@ def collect_market_move_candidates(watchlist_groups: dict[str, list[str]], gener
     return [HardSourceCandidate(
         item_id="market_live:proxy_moves",
         lane="market_action",
-        title=f"Market proxy move is led by {top_symbol} at {top['one_day_pct']}% one-day change",
+        title=f"市场观察名单单日波动由 {top_symbol} 领跑，变化 {top['one_day_pct']}%",
         summary=summary,
         source="yfinance daily adjusted prices + Stooq cross-check",
         source_type="market_proxy_prices_live",
         as_of_date=str(top.get("date", generated_at.date().isoformat())),
         tickers=",".join(symbol for symbol in symbols if symbol in snapshots),
-        themes="market_proxies",
+        themes="market_prices,watchlist",
         source_url="https://query1.finance.yahoo.com/",
         source_authority=4 if confidence == "market_data_cross_checked" else 3,
         freshness=1 if freshness_status == "stale" else 5,
@@ -889,7 +945,7 @@ def collect_hard_source_candidates(
         candidates.extend(collect_fred_yield_candidates(generated_at))
     else:
         candidates.extend(collect_fred_macro_candidates(generated_at, state_path=macro_state_path))
-    candidates.extend(collect_market_move_candidates(groups, generated_at))
+    candidates.extend(collect_market_move_candidates(groups, generated_at, symbol_metadata=symbol_metadata))
     candidates.extend(collect_watchlist_relevance_candidates(groups, generated_at))
     retrieved_at = generated_at.isoformat()
     for candidate in candidates:

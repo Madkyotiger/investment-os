@@ -5,6 +5,10 @@ groups:
     purpose: "Large-cap company and earnings context"
     source: yahoo
     symbols: [AAPL, MSFT, NVDA]
+  core_hk:
+    purpose: "Hong Kong listed company context"
+    source: yahoo
+    symbols: [0700.HK]
   market_proxies:
     purpose: "Macro and sector context"
     source: yahoo
@@ -17,6 +21,7 @@ symbol_metadata:
   AAPL: {market: US, asset_type: equity, sec_filings: true}
   MSFT: {market: US, asset_type: equity, sec_filings: true}
   NVDA: {market: US, asset_type: equity, sec_filings: true}
+  0700.HK: {market: HK, asset_type: equity, sec_filings: false}
   SPY: {market: US, asset_type: etf, sec_filings: false}
   QQQ: {market: US, asset_type: etf, sec_filings: false}
   IWM: {market: US, asset_type: etf, sec_filings: false}

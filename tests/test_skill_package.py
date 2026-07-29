@@ -23,7 +23,7 @@ def test_investment_research_skill_package_is_complete() -> None:
     text = SKILL_FILE.read_text(encoding="utf-8")
     metadata = _frontmatter(text)
     assert metadata["name"] == "investment-research"
-    assert metadata["version"] == "2.0.0"
+    assert metadata["version"] == "2.1.0"
 
     linked_paths = set(
         re.findall(r"`((?:references|templates)/[^`]+\.md)`", text)

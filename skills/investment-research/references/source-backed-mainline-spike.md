@@ -6,7 +6,7 @@ Use this reference when moving an investment-research prototype from price-only 
 
 For the reader's personal / friends / client-reference investment research system, the stronger architecture is not a single large terminal repo and not ad-hoc repo stitching. Use mature modules by capability, with the local DataOS owning schema, evidence status, report policy, and advisory boundary.
 
-Recommended first professional tracer bullet:
+Optional deep-research tracer bullet, not the recurring daily dependency baseline:
 
 ```text
 OpenBB price/history
@@ -17,7 +17,7 @@ OpenBB price/history
 → no trade decision
 ```
 
-## Why this order
+## Why this order for a bounded deep-research spike
 
 - **OpenBB** proves a mature global data/tooling base and can later expose Python/REST/MCP surfaces.
 - **FinanceToolkit** adds transparent financial statement and ratio calculation, making the report more professional than price/news summaries.

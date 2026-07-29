@@ -34,10 +34,11 @@ The collector should produce research candidates, not conclusions or trade decis
    - Compute simple context such as `10Y-2Y spread`.
    - Candidate confidence can be `verified_data`, but causal claims must remain unproven.
 
-3. **Market proxy moves**
-   - Use yfinance/OpenBB-style daily adjusted prices for `SPY, QQQ, IWM, XLK, SMH, TLT, UUP`.
+3. **US/HK watchlist and market-proxy moves**
+   - Use direct yfinance daily adjusted prices for configured US/HK equities/ETFs plus proxies such as `SPY, QQQ, IWM, XLK, SMH, TLT, UUP`.
    - Emit 1D and 60D moves as market-action candidates.
-   - Confidence should remain `market_data_probable` until cross-checked with a second quote source.
+   - Treat Stooq as best-effort. Normalize Yahoo `0700.HK` to Stooq `700.hk`; never create a hybrid such as `0700.hk.us`.
+   - A code path, HTTP 200, HTML challenge page, or importable module is not a successful second source. Confidence remains `market_data_probable` until usable same-date rows are parsed and reconciled.
 
 4. **Watchlist relevance rows**
    - Use `configs/watchlist.yaml` to route relevance only.

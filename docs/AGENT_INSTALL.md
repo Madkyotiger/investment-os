@@ -65,7 +65,7 @@ uv run --no-project python scripts/verify_dependency_profiles.py market
 uv run --no-project python scripts/verify_dependency_profiles.py global-research china
 ```
 
-SEC requests need `SEC_EDGAR_IDENTITY` in the environment. Tushare needs `TUSHARE_TOKEN`. Never put either value in the repository.
+SEC requests need `SEC_EDGAR_IDENTITY` in the environment. Tushare needs `TUSHARE_TOKEN`. Never put either real value in the repository. Package-profile import checks do not prove provider health; use `uv run --frozen --extra market investment-os doctor --probe daily` for the daily channels. Stooq is best-effort and may remain unavailable even when its adapter code is installed.
 
 ## Clean removal
 

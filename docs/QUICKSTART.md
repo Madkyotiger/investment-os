@@ -67,7 +67,7 @@ uv run investment-os daily \
 
 Live collection fails closed and never substitutes synthetic observations. In strict mode, exit `2` means every fresh usable live source failed; a successfully fetched observation outside its configured cadence/staleness window is not usable. `configs/macro_series.yaml` defines each FRED series' freshness and material-change thresholds, plus a five-calendar-day market snapshot threshold so weekends/holidays can remain current without accepting arbitrarily old closes. This config is bundled as package data and used automatically when the checkout-relative file is unavailable. A blocked source target, metadata-only filing, or one failed source does not fail strict mode when another fresh usable live source succeeded. A successful collection may still return `quiet` when no changed promotable item exists.
 
-SEC requests should use `SEC_EDGAR_IDENTITY` in the environment. Do not put it in tracked files.
+SEC requests should use `SEC_EDGAR_IDENTITY` in the environment. Do not put a real contact identity in tracked files. For a recurring runtime, install `market` once, load an ignored `.env`, then run `investment-os doctor --probe daily`. The probe distinguishes importability, configuration, and live channel health; Stooq remains best-effort and never upgrades a market row unless usable same-date data is parsed.
 
 ## Current gaps
 

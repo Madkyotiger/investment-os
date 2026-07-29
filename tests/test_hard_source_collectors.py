@@ -9,7 +9,9 @@ import pytest
 from investment_os.evidence_contract import normalize_evidence_status
 from investment_os.hard_source_collectors import (
     HardSourceCandidate,
+    _download_stooq_snapshot,
     _download_yfinance_snapshot,
+    _stooq_symbol,
     get_last_source_errors,
     collect_fred_yield_candidates,
     collect_hard_source_candidates,
@@ -125,6 +127,67 @@ def test_market_move_candidate_can_be_built_from_snapshot(monkeypatch):
     assert set(observed) == {"primary_yfinance", "secondary_stooq"}
     assert candidates[0].content_hash.startswith("sha256:")
     assert candidates[0].freshness_threshold_days == 5
+
+
+def test_stooq_symbol_mapping_preserves_exchange_and_never_creates_hk_us_hybrid():
+    assert _stooq_symbol("SPY") == "spy.us"
+    assert _stooq_symbol("0700.HK") == "700.hk"
+    assert _stooq_symbol("0005.hk") == "5.hk"
+    assert _stooq_symbol("510300.SS") is None
+    assert _stooq_symbol("510300") is None
+
+
+def test_stooq_html_challenge_is_a_visible_source_failure(monkeypatch):
+    before = len(get_last_source_errors())
+    monkeypatch.setattr(
+        "investment_os.hard_source_collectors._http_text",
+        lambda _url, timeout=10: "<html><body>This site requires JavaScript to verify your browser.</body></html>",
+    )
+
+    assert _download_stooq_snapshot(["0700.HK"]) == {}
+    errors = get_last_source_errors()[before:]
+
+    assert errors
+    assert errors[-1]["source"] == "Stooq"
+    assert errors[-1]["code"] == "invalid_response"
+    assert errors[-1]["affected_count"] == 1
+    assert "700.hk" in str(errors[-1]["source_url"])
+    assert "0700.hk.us" not in str(errors[-1]["source_url"])
+
+
+def test_market_daily_collects_us_and_hk_watchlist_symbols_not_only_proxies(monkeypatch):
+    captured: list[str] = []
+
+    def fake_primary(symbols: list[str]):
+        captured.extend(symbols)
+        return {
+            symbol: {"date": "2026-07-07", "close": 100.0, "one_day_pct": 1.0, "sixty_day_pct": 2.0}
+            for symbol in symbols
+        }
+
+    monkeypatch.setattr("investment_os.hard_source_collectors._download_yfinance_snapshot", fake_primary)
+    monkeypatch.setattr("investment_os.hard_source_collectors._download_stooq_snapshot", fake_primary)
+
+    candidate = collect_market_move_candidates(
+        {
+            "core_us": ["NVDA"],
+            "core_hk": ["0700.HK"],
+            "market_proxies": ["SPY"],
+            "china_parallel": ["510300"],
+        },
+        datetime(2026, 7, 8, tzinfo=timezone.utc),
+        symbol_metadata={
+            "NVDA": {"market": "US", "asset_type": "equity"},
+            "0700.HK": {"market": "HK", "asset_type": "equity"},
+            "SPY": {"market": "US", "asset_type": "etf"},
+            "510300": {"market": "CN", "asset_type": "etf"},
+        },
+    )[0]
+
+    assert captured == ["SPY", "NVDA", "0700.HK", "SPY", "NVDA", "0700.HK"]
+    assert candidate.tickers == "SPY,NVDA,0700.HK"
+    assert "510300" not in candidate.tickers
+    assert candidate.title.startswith("市场观察名单单日波动由")
 
 
 def test_market_move_candidate_uses_configured_snapshot_freshness(monkeypatch):

@@ -87,7 +87,21 @@ uv run --frozen --isolated --link-mode copy --extra market \
 
 示例 watchlist 中标记为 `source: china` 的标的会在这次 market-only 检查里保留为明确的数据缺口，不会被误发给 Yahoo。
 
-部分 SEC 路径需要有效身份字符串：
+如果要作为日常运行环境使用，只把 `market` 依赖长期装进项目 `.venv`，并把“包能导入”和“数据通道可用”分开检查：
+
+```bash
+uv sync --frozen --extra dev --extra market
+cp .env.example .env
+# 把 .env 中的 SEC 占位身份改成真实联系身份。
+set -a; source .env; set +a
+uv run investment-os doctor --probe daily
+```
+
+无人值守的本地运行可调用 `scripts/run_daily_local.sh`。脚本优先读取 `${XDG_CONFIG_HOME:-$HOME/.config}/investment-os/runtime.env`（也可用 `INVESTMENT_OS_ENV_FILE` 指定），没有时才回退到仓库内被忽略的 `.env`。
+
+`doctor` 会分别报告包是否 `importable`、通道是否 `configured`、实时 `live_probe` 是否成功。OpenBB、FinanceToolkit、edgartools、AKShare、Tushare 都不是当前 `investment-os daily` 的必要依赖。Stooq 只是 best-effort 二源：代码路径正确或 HTTP 200 都不算成功，必须实际解析出可用 CSV；否则 daily 继续标记为单一来源，不假装完成交叉核验。
+
+SEC 请求需要有效身份字符串。它不是 API secret，但真实联系信息仍应只放在被忽略的本地环境文件里：
 
 ```bash
 export SEC_EDGAR_IDENTITY="Your Name your-email@example.com"

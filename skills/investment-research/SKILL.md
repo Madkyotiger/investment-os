@@ -1,7 +1,7 @@
 ---
 name: investment-research
 description: Build and operate evidence-first investment research systems. Use when the task involves source-backed market research, watchlists, data pipelines, evidence ledgers, longitudinal issuer analysis, risk review, or reader briefs. Do NOT use for buy/sell/hold calls, position sizing, brokerage execution, or regulated investment advice.
-version: 2.0.0
+version: 2.1.0
 author: Investment OS contributors
 license: MIT
 compatibility: hermes
@@ -62,8 +62,10 @@ For the user's first-pass solution, prioritize a proven workflow mainline rather
 Watchlist / Holdings / Client Intake
         ↓
 Data & Tooling Base
-  - Global / US core: OpenBB first, yfinance as lightweight fallback / baseline; US equities are a first-class priority, not secondary to China data
-  - China / HK parallel branch: AKShare + Tushare, with optional efinance cross-checks
+  - Recurring US/HK daily: direct yfinance market path + direct SEC/FRED HTTP; official issuer/HKEX pages remain primary research routes
+  - Second-source market check: Stooq only when a live probe returns usable same-date rows; otherwise keep single-source status
+  - Optional deep research: OpenBB for genuinely independent provider routing, FinanceToolkit for normalized ratios, edgartools for complex filing parsing
+  - China branch: activate AKShare or Tushare only when A-share coverage is in scope; official PBOC/NBS/CNINFO/SSE/SZSE sources remain authoritative
         ↓
 Data Quality Gate
   - source
@@ -96,7 +98,7 @@ Client-safe Research Memo
   - facts, interpretation, risks, bear case, evidence gaps, research suggestions, no decision
 ```
 
-For the concrete OpenBB + FinanceToolkit + edgartools tracer bullet, see `references/source-backed-mainline-spike.md`.
+For the optional OpenBB + FinanceToolkit + edgartools deep-research tracer bullet, see `references/source-backed-mainline-spike.md`. It is not the recurring daily dependency baseline.
 
 For the US-first + China-parallel unified pilot pattern, see `references/us-china-unified-pilot.md`.
 
@@ -287,9 +289,9 @@ Then verify:
 
 Recommended order:
 
-1. Baseline: yfinance watchlist pipeline, report, and no-decision policy test.
-2. Source-backed professional mainline: OpenBB + FinanceToolkit + edgartools into Evidence Ledger and research memo.
-3. China market data: AKShare + Tushare into the same Data Quality Gate; do not create a separate reporting standard.
+1. Recurring daily baseline: direct yfinance for configured US/HK watchlist prices, direct SEC/FRED HTTP, official issuer/HKEX research routes, report, and no-decision policy test. Keep package importability, connector configuration, and live probes separate.
+2. Optional deep research: add edgartools for complex filing parsing, FinanceToolkit when normalized statement/ratio work earns its maintenance cost, and OpenBB only when it routes to an independent provider rather than wrapping the same yfinance source.
+3. China market data: activate AKShare or Tushare when A-share coverage enters scope; use the same Data Quality Gate and retain official PBOC/NBS/CNINFO/SSE/SZSE sources as authority.
 4. Research agents: TradingAgents-style analyst / bull-bear / risk only after the evidence layer exists; remove Trader, Portfolio Manager approval, simulated exchange, broker, and execution paths for Phase 1.
 5. Portfolio risk: PyPortfolioOpt / Riskfolio-Lib / QuantStats for risk lenses and performance review, not position advice.
 6. Quant validation: Qlib / vectorbt / rqalpha as an isolated validation lab.

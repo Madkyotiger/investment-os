@@ -56,6 +56,7 @@ def test_load_watchlist_accepts_grouped_public_sample():
         "AAPL",
         "MSFT",
         "NVDA",
+        "0700.HK",
         "SPY",
         "QQQ",
         "IWM",

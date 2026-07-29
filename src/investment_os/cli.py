@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import platform
 import sys
 from datetime import datetime, timezone
@@ -158,19 +159,112 @@ def run_demo(out_dir: Path) -> int:
     return 0
 
 
-def run_doctor() -> int:
+OPTIONAL_PACKAGE_USAGE = {
+    "yfinance": ["run", "daily"],
+    "openbb": ["optional_global_research_spike"],
+    "financetoolkit": ["optional_global_research_spike"],
+    "edgar": ["optional_complex_filing_research"],
+    "akshare": ["optional_china_research"],
+    "tushare": ["optional_china_research"],
+}
+
+
+def _probe_daily_connectors() -> dict[str, str]:
+    from .hard_source_collectors import (
+        _download_stooq_snapshot,
+        _download_yfinance_snapshot,
+        _fred_latest,
+        _safe_sec_recent,
+    )
+
+    def probe(callback) -> str:
+        try:
+            return "available" if callback() else "unavailable"
+        except Exception:
+            return "unavailable"
+
+    statuses = {
+        "yfinance": probe(lambda: bool(_download_yfinance_snapshot(["SPY"]))),
+        "fred": probe(lambda: _fred_latest("DGS10") is not None),
+        "stooq": probe(lambda: bool(_download_stooq_snapshot(["SPY"]))),
+    }
+    statuses["sec"] = (
+        probe(lambda: bool(_safe_sec_recent()))
+        if os.getenv("SEC_EDGAR_IDENTITY", "").strip()
+        else "blocked_missing_identity"
+    )
+    return statuses
+
+
+def run_doctor(probe_target: str | None = None) -> int:
     core = {name: importlib.util.find_spec(name) is not None for name in ("numpy", "pandas", "yaml")}
-    optional = {
-        name: importlib.util.find_spec(name) is not None
-        for name in ("yfinance", "openbb", "financetoolkit", "edgar", "akshare", "tushare")
+    optional_packages = {
+        name: {
+            "importable": importlib.util.find_spec(name) is not None,
+            "used_by": used_by,
+        }
+        for name, used_by in OPTIONAL_PACKAGE_USAGE.items()
     }
     supported = (3, 11) <= sys.version_info[:2] < (3, 13)
+    sec_configured = bool(os.getenv("SEC_EDGAR_IDENTITY", "").strip())
+    connectors = {
+        "yfinance": {
+            "adapter_installed": optional_packages["yfinance"]["importable"],
+            "configured": optional_packages["yfinance"]["importable"],
+            "required_for_daily": True,
+            "used_by": ["run", "daily"],
+            "live_probe": "not_run",
+        },
+        "sec": {
+            "adapter_installed": True,
+            "configured": sec_configured,
+            "required_for_daily": True,
+            "used_by": ["daily"],
+            "live_probe": "not_run",
+        },
+        "fred": {
+            "adapter_installed": True,
+            "configured": True,
+            "required_for_daily": True,
+            "used_by": ["daily"],
+            "live_probe": "not_run",
+        },
+        "stooq": {
+            "adapter_installed": True,
+            "configured": True,
+            "required_for_daily": False,
+            "used_by": ["daily_cross_check"],
+            "live_probe": "not_run",
+        },
+    }
+    if probe_target == "daily":
+        probe_results = _probe_daily_connectors()
+        for name, status in probe_results.items():
+            connectors[name]["live_probe"] = status
+        required_ready = all(
+            connectors[name]["live_probe"] == "available"
+            for name in ("yfinance", "sec", "fred")
+        )
+        if not required_ready:
+            daily_readiness = "degraded"
+        elif connectors["stooq"]["live_probe"] == "available":
+            daily_readiness = "ready"
+        else:
+            daily_readiness = "ready_with_degraded_cross_check"
+    else:
+        daily_readiness = (
+            "configured"
+            if optional_packages["yfinance"]["importable"] and sec_configured
+            else "degraded"
+        )
     result = {
         "investment_os": __version__,
         "python": platform.python_version(),
         "python_supported": supported,
         "core": core,
-        "optional": optional,
+        "optional_packages": optional_packages,
+        "connectors": connectors,
+        "daily_readiness": daily_readiness,
     }
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0 if supported and all(core.values()) else 1
@@ -195,7 +289,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--version", action="version", version=__version__)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    subparsers.add_parser("doctor", help="Check the local Python environment and optional connectors.")
+    doctor = subparsers.add_parser(
+        "doctor",
+        help="Separate package importability, connector configuration, and optional live health.",
+    )
+    doctor.add_argument("--probe", choices=("daily",), help="Run live health probes for the daily connector set.")
 
     demo = subparsers.add_parser("demo", help="Run the deterministic offline evaluation.")
     demo.add_argument("--out", type=Path, default=Path("demo-output"))
@@ -215,7 +313,7 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
     if args.command == "doctor":
-        return run_doctor()
+        return run_doctor(args.probe)
     if args.command == "demo":
         return run_demo(args.out)
     if args.command == "run":
