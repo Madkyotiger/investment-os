@@ -2,6 +2,10 @@
 
 Your job is to install and evaluate this repository without changing the user's global environment or creating an automated investment service.
 
+## Market-scope contract
+
+Investment OS is a multi-market research system. Preserve the U.S./Hong Kong `daily` watchlist path, market and macro proxies, and optional global research sources when adding or changing a market-specific adapter. `a-share-daily` is additive and stock-specific; do not make it the default for other markets, route Hong Kong or U.S. symbols through it, or remove other source families merely because an A-share task is active.
+
 ## Required path
 
 1. Confirm Python is 3.11 or 3.12 and `uv` is available.

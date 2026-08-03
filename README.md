@@ -6,6 +6,8 @@ Investment OS turns market data and source material into research questions, evi
 
 This repository is a public evaluation release. It does not recommend, size, or execute trades.
 
+Investment OS is multi-market by design. The existing `daily` watchlist path continues to cover U.S. and Hong Kong equities, market proxies, macro context, and other configured sources; the optional `global-research` profile keeps OpenBB, FinanceToolkit, and SEC/EDGAR research available. `a-share-daily` is an added A-share lane, not a replacement for those paths and not a boundary on future markets or source types.
+
 ## What is working
 
 - An offline demo that needs no account, API key, or network access.
