@@ -18,7 +18,7 @@ It answers:
 - what deserves attention;
 - what concrete research or monitoring action is useful now.
 
-Default shape: 1–5 items, phone-readable, fewer or silence allowed. Internal fact → meaning → next-variable logic stays backstage. Reader actions may update a watchlist, check exposure, revisit an earnings/valuation assumption, open a primary source, set a trigger, or ignore noise. They are not trade instructions.
+Default shape: zero to four items, phone-readable, fewer or silence allowed. Internal fact → meaning → next-variable logic stays backstage. Reader actions may update a watchlist, check exposure, revisit an earnings/valuation assumption, open a primary source, set a trigger, or ignore noise. They are not trade instructions.
 
 ## Product B — Triggered Rolling Deep Read / 变化深读
 

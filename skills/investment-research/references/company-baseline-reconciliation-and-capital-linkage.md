@@ -119,7 +119,7 @@ Use this closeout order:
 3. compute artifact hashes only after the last edit;
 4. write the receipt;
 5. verify the receipt hashes against live files;
-6. update Current/private project state and append the new event;
+6. update the owning project/state surface and append the new event;
 7. read back state and parse event JSONL before reporting completion.
 
 Updating counts or state before this order creates stale receipts and false completion.
@@ -146,7 +146,7 @@ A second issuer baseline confirmed the reconciliation pattern and added four reu
 - **Capital-risk separation:** customer temporary receipts, issuer purchase/construction obligations, annual CapEx and conditional government incentives were preserved as different contracts and currencies; they were not netted or labelled customer-funded capacity.
 - **Conversion non-answer:** management cited roughly US$50 billion of customer investment per 1GW AI data center but declined to translate it into TSMC wafer demand or revenue. The system metric remained a management account, not an issuer-revenue bridge.
 
-The source hierarchy also changed the build: reported financial facts were moved from provider-edited transcript anchors to issuer earnings releases and management reports, while transcripts remained the source for Q&A, estimates, timetables and non-answers. The final validator checked hashes, exact line slices, provenance, derived calculations, cross-ledger IDs, open forecast periods, dossier citations, extraction reports and receipt hashes before Current/private knowledge base writeback.
+The source hierarchy also changed the build: reported financial facts were moved from provider-edited transcript anchors to issuer earnings releases and management reports, while transcripts remained the source for Q&A, estimates, timetables and non-answers. The final validator checked hashes, exact line slices, provenance, derived calculations, cross-ledger IDs, open forecast periods, dossier citations, extraction reports and receipt hashes before writing back to the owning project/knowledge surface.
 
 ## Worked calibration from AMD (2026-07-13)
 

@@ -62,4 +62,4 @@ Depth is earned by a better comparison and a nearer decision, not by length. Avo
 
 ## 6. Relationship to Product A pilots
 
-A finite A pilot may run on a schedule when the user explicitly asks for a multi-day test. Its contract should be 1–5 qualified items, cross-day deduplication, no quota filling, and an explicit stop after the agreed runs. Keep the legacy job paused; create a clean pilot job rather than repurposing a stale prompt. Product A may surface a B candidate, but it must not auto-publish Product B.
+A finite A pilot may run on a schedule when the user explicitly asks for a multi-day test. Its contract should be zero to four qualified items, cross-day deduplication, no quota filling, and an explicit stop after the agreed runs. Keep the legacy job paused; create a clean pilot job rather than repurposing a stale prompt. Product A may surface a B candidate, but it must not auto-publish Product B.

@@ -94,7 +94,7 @@ When the HOLD becomes a living local + reader asset, keep the implementation thi
 4. **Make the reader product from the same frozen evidence.** The Research Gate Brief should state the earned uncertainty and next decisive disclosures. It must not bypass the dashboard into a stronger company, valuation or trade conclusion.
 5. **Version trigger reruns.** A valid event updates only the affected row and creates a dated copy of the model rerun. Never overwrite the frozen base merely because new evidence arrived.
 6. **Stop at reader value.** After user-identity cloud creation and content readback, compare the brief with the existing reader product before runtime, automation or a new cron. Engineering green is not permission to automate.
-7. **Close state in order.** Final renderer/validator/test run → artifact hashes → cloud create/readback → receipt → Project Current/private Current readback. If a timestamp-writing validator is rerun after hashing, its hash and receipt are stale and must be refreshed before closeout.
+7. **Close state in order.** Final renderer/validator/test run → artifact hashes → cloud create/readback → receipt → owning project/state readback. If a timestamp-writing validator is rerun after hashing, its hash and receipt are stale and must be refreshed before closeout.
 
 A useful initial state is usually every row at `waiting`: this proves the system knows what would change the judgment without pretending a new event occurred.
 
@@ -107,7 +107,7 @@ For a whole-system handoff, distinguish project truth from runtime truth:
 - Live cron/scheduler state must be read from the scheduler, not copied from an old status note.
 - Compare scheduled prompt/audience/scope with the latest accepted product contract. A stale scheduled prompt is a decision risk even when the last run was technically successful.
 - Surface pause / update / allow-run as a human decision when the schedule or audience change has commitment cost; do not silently modify it.
-- After writing the handoff, read it back, verify referenced paths and upstream validators, write the handoff link back to Current/private continuity, and verify the writeback.
+- After writing the handoff, read it back, verify referenced paths and upstream validators, write the handoff link back to the owning project/state surface, and verify the writeback.
 
 ## Common traps
 
