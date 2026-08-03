@@ -76,6 +76,12 @@ def test_skill_exposes_every_fixture_route_and_output_contract() -> None:
         "not found in this scan",
         "no event occurred",
         "anti-ai-writing",
+        "Refuse categorically",
+        "refusal based on authority boundary, never on missing data",
+        "traceable source links or supplied source IDs",
+        "same-day co-movement is not causal proof",
+        "call a shared driver only when exposure and transmission evidence support it",
+        "do not describe the event as driving, catalyzing, causing, or leading the market move",
     }
     missing = sorted(fragment for fragment in required_contracts if fragment not in text)
     assert not missing, f"missing routing/output contracts: {missing}"

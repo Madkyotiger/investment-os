@@ -56,16 +56,16 @@ Choose one primary route. If the request carries several needs, preserve the rea
 
 | Route | Default surface | Use when | Output default |
 |---|---|---|---|
-| `quick-answer` | `reader-chat` | A bounded current fact, mechanism, or “what matters now?” question | Useful conclusion first; exact as-of; essential evidence, uncertainty, and links; normally one phone screen. |
+| `quick-answer` | `reader-chat` | A bounded current fact, mechanism, or “what matters now?” question | Useful conclusion first; exact as-of; essential evidence, uncertainty, and original links or supplied source IDs; normally one phone screen. |
 | `daily-scan` | `reader-brief` | Broad current browsing across a defined universe | Zero to four qualified changes; no quota filling; one worthwhile research action; silence is valid. |
-| `cross-market-wrap` | `reader-brief` | A/H/US or another multi-market comparison | Organize around cross-market mechanisms, not parallel news dumps; state coverage and gaps by market. |
+| `cross-market-wrap` | `reader-brief` | A/H/US or another multi-market comparison | Organize around cross-market mechanisms, not parallel news dumps; same-day co-movement is not causal proof; call a shared driver only when exposure and transmission evidence support it. |
 | `a-share-institutional` | `reader-plus-audit` | A-share watchlist or institutional-observation signals | Reader brief first; ledger, coverage matrix, and source receipt remain available as the Audit surface. |
 | `triggered-deep-read` | `reader-deep-read` | A current event materially changes a tracked question | Current delta → historical prior → changed mechanism → path to next material event → falsifier and research action. |
 | `named-deep-pack` | `research-pack` | An explicitly requested stock, pair, sector, or bounded question earns deeper work | Confirm source sufficiency; align periods/definitions; show model and evidence gaps; do not make it the recurring default. |
 | `source-audit` | `evidence-ledger` | The user asks whether a claim or source is supportable | Claim-level verdict; original source and field semantics; fact/calculation/inference split; evidence strength and gaps. |
 | `system-build` | `engineer-receipt` | A reusable research pipeline, data model, collector, or agent workflow must be built | Implement and exercise the smallest coherent system; return tests, artifacts, and remaining gaps—not a mock reader report. |
 | `system-debug` | `engineer-receipt` | A connector, endpoint, parser, schema, freshness gate, or run fails | Reproduce, diagnose, repair narrowly, execute again, and report the verified result. |
-| `boundary-refusal` | `refuse-and-reroute` | The user asks for a trade decision, position, target, return promise, or execution | Refuse the decision; offer evidence comparison or research questions; keep authority with the user. |
+| `boundary-refusal` | `refuse-and-reroute` | The user asks for a trade decision, position, target, return promise, or execution | Refuse categorically; never imply that more or better data would authorize the agent to choose; offer evidence comparison or research questions instead. |
 | `blocked-source` | `evidence-gap` | A decision-relevant source cannot be read or a required fact remains unavailable | Name the exact access/evidence gap, try an allowed authoritative/readable route, and bound the conclusion. |
 | `client-safe` | `forwardable-brief` | Existing research must become safe to share with a friend, client, or external reader | Remove private/system residue; preserve facts and caveats; run `anti-ai-writing` final-language QA for formal output. |
 
@@ -87,7 +87,7 @@ For detailed reader style, source-universe selection, and two-tier delivery, loa
 - First useful line: judgment, current state, or decision-relevant change—not process narration.
 - Default length: one phone screen unless the decision genuinely needs more.
 - Keep facts, interpretation, and unknowns legible without turning the prose into a worksheet.
-- Cite only sources that carry the conclusion. Preserve original URLs where possible.
+- Cite only sources that carry the conclusion. Preserve original URLs where possible. If the user supplies an unlinked packet, cite its source IDs when available; otherwise label the material unverified rather than presenting it as sourced current fact.
 - Natural Chinese or the user's requested language; technical market terms may remain English when they are the normal term.
 - No internal filenames, paths, commands, adapter names, evidence-row counts, schema labels, or QA scaffolding.
 
@@ -104,14 +104,15 @@ The Audit surface does not replace the reader product. For A-share institutional
 
 ### Mode-specific minimums
 
-- `quick-answer`: conclusion, as-of, 1–3 decisive facts, uncertainty, source links.
+- `quick-answer`: conclusion, as-of, 1–3 decisive facts, uncertainty, and traceable source links or supplied source IDs.
 - `daily-scan`: zero to four changes; what deserves attention; one research/monitoring action. No repeated-theme quota.
-- `cross-market-wrap`: common mechanism, market-specific confirmation or contradiction, coverage boundary, next variable.
+- `cross-market-wrap`: candidate mechanism, market-specific confirmation or contradiction, explicit non-causality for same-day co-movement, coverage boundary, next variable. When exposure and transmission evidence are missing, use “candidate mechanism,” “possible mapping,” or “co-movement”; do not describe the event as driving, catalyzing, causing, or leading the market move.
 - `a-share-institutional`: observed signal, why it may matter, inference limit, next confirmation; audit stays optional.
 - `triggered-deep-read`: genuinely new delta, prior state, next-event path, observable falsifier.
 - `named-deep-pack`: bounded question, reconciled baseline, scenario/model limits, unanswered variables.
 - `source-audit`: claim verdict, authoritative evidence, derivation/inference status, missing proof.
 - `system-build` / `system-debug`: verified artifact or repair, commands/tests, exact failure or residual risk.
+- `boundary-refusal`: refusal based on authority boundary, never on missing data; more evidence can improve comparison but cannot delegate the trade decision to the agent.
 
 Formal, reusable, or forwardable prose gets `anti-ai-writing` QA after facts and structure are locked. Never add vividness, certainty, examples, or claims that the evidence did not earn.
 
@@ -210,6 +211,7 @@ Load only the branch the selected demand needs. Every listed asset is part of th
 - presenting source count, agent debate, optimizer precision, or report length as quality;
 - letting one market adapter become the product boundary;
 - turning a research action into a trade instruction;
+- making a refusal conditional on missing data, which implies that enough data would authorize the agent to choose a trade;
 - repeating a fixed deep question without a current delta;
 - calling a technically green pipeline a useful reader product before human evaluation.
 
