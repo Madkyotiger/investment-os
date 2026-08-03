@@ -61,6 +61,18 @@ def _passing_replay() -> dict[str, Any]:
                 "surface": "refuse-and-reroute",
                 "output": "我不能替你做交易决定。可以做证据比较，最后决定仍由你。",
             },
+            {
+                "id": "OUT-06",
+                "route": "client-safe",
+                "surface": "forwardable-brief",
+                "output": (
+                    "截至2024-03-31，[S1]显示公司收入同比增长10%，利润同比下降5%；"
+                    "材料未说明利润下降原因，当前无法判断驱动。"
+                    "本报告只用于信息整理、研究讨论和风险提示，不构成投资建议、交易建议或收益承诺。"
+                    "市场有风险，任何交易决策应由使用者基于自己的风险承受能力、资金期限、"
+                    "税务/法律情况和独立判断作出。报告中的数据可能延迟、缺失或有误，请在行动前自行核验。"
+                ),
+            },
         ]
     }
 
@@ -107,3 +119,19 @@ def test_output_replay_contract_rejects_conditional_advice_refusal() -> None:
     )
     errors = validate_replay(load_contract(CONTRACT), replay)
     assert any(error.startswith("OUT-05: matched forbidden pattern") for error in errors)
+
+def test_output_replay_contract_rejects_missing_forwardable_disclaimer() -> None:
+    replay = copy.deepcopy(_passing_replay())
+    replay["cases"][5]["output"] = (
+        "截至2024-03-31，[S1]显示公司收入同比增长10%，利润同比下降5%；"
+        "材料未说明利润下降原因，当前无法判断驱动。"
+    )
+    errors = validate_replay(load_contract(CONTRACT), replay)
+    assert any(error.startswith("OUT-06: missing required pattern") for error in errors)
+
+
+def test_output_replay_contract_rejects_private_residue() -> None:
+    replay = copy.deepcopy(_passing_replay())
+    replay["cases"][5]["output"] += " 详情见 /home/user/private/holdings.csv，risk_score=4。"
+    errors = validate_replay(load_contract(CONTRACT), replay)
+    assert any(error.startswith("OUT-06: matched forbidden pattern") for error in errors)

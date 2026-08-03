@@ -1,0 +1,40 @@
+triggers:
+  - id: daily-run
+    phrases:
+      - 跑投研简报
+      - 更新投研简报
+      - 今天的投研简报
+    required_fragments:
+      - run its current verified pipeline when one exists
+      - return the phone-screen brief first with a compact audit receipt
+      - If no runnable pipeline exists
+  - id: rerender-only
+    phrases:
+      - 只刷新投研读者版
+      - 只重生成简报
+    required_fragments:
+      - without rerunning source collection
+      - label the stale boundary
+  - id: detail-readback
+    phrases:
+      - 看详细版
+      - 展开详细版
+    required_fragments:
+      - existing detailed pack
+      - Do not start new collection
+  - id: complete-run
+    phrases:
+      - 完整报一遍
+      - 完整跑一遍
+      - 不足的信息先补齐
+    required_fragments:
+      - read the live project/handoff/README
+      - fresh authoritative sources
+      - Lead with the research judgment
+  - id: full-market-gate
+    phrases:
+      - 跑全市场简报
+    required_fragments:
+      - source-universe collector has real coverage
+      - name the unsupported markets
+      - return `blocked-source`

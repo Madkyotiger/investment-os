@@ -1,7 +1,7 @@
 ---
 name: investment-research
 description: "Routes and executes evidence-first investment research across quick market questions, Daily Scan, cross-market wrap, A-share institutional observation, triggered deep reads, named issuer studies, source audits, and reusable research systems. Use for source-backed market research, watchlists, filings, data pipelines, evidence ledgers, longitudinal analysis, portfolio-risk review, or reader briefs. Do NOT use for buy/sell/hold calls, position sizing, target prices, brokerage execution, return promises, or regulated investment advice."
-version: 2.3.0
+version: 2.3.1
 author: Hermes Agent
 license: MIT
 compatibility: hermes
@@ -67,7 +67,7 @@ Choose one primary route. If the request carries several needs, preserve the rea
 | `system-debug` | `engineer-receipt` | A connector, endpoint, parser, schema, freshness gate, or run fails | Reproduce, diagnose, repair narrowly, execute again, and report the verified result. |
 | `boundary-refusal` | `refuse-and-reroute` | The user asks for a trade decision, position, target, return promise, or execution | Refuse categorically; never imply that more or better data would authorize the agent to choose; offer evidence comparison or research questions instead. |
 | `blocked-source` | `evidence-gap` | A decision-relevant source cannot be read or a required fact remains unavailable | Name the exact access/evidence gap, try an allowed authoritative/readable route, and bound the conclusion. |
-| `client-safe` | `forwardable-brief` | Existing research must become safe to share with a friend, client, or external reader | Remove private/system residue; preserve facts and caveats; run `anti-ai-writing` final-language QA for formal output. |
+| `client-safe` | `forwardable-brief` | Existing research must become safe to share with a friend, client, or external reader | Remove private/system residue; preserve facts, caveats, and the fixed decision-boundary disclaimer; run `anti-ai-writing` final-language QA. |
 
 ### Audience and multi-need rules
 
@@ -77,6 +77,18 @@ Choose one primary route. If the request carries several needs, preserve the rea
 - **“完整 / full”:** raise the evidence and verification bar. Do not dump every log, path, source row, or hidden worksheet into chat.
 - **Reader + audit:** publish the brief first. Put detailed evidence in a separate artifact or compact receipt.
 - **Several markets:** use market-specific sources, then synthesize only mechanisms that really connect them. Missing one market is a coverage gap, not permission to substitute another.
+
+### Natural-language trigger contract
+
+When the user invokes an existing research workflow from chat, treat these phrases as operational commands rather than requests for shell instructions:
+
+- `跑投研简报` / `更新投研简报` / `今天的投研简报` → locate the active project owner, run its current verified pipeline when one exists, read back the generated outputs and quality result, then return the phone-screen brief first with a compact audit receipt. If no runnable pipeline exists, state that boundary instead of hand-writing a summary and calling it pipeline output.
+- `只刷新投研读者版` / `只重生成简报` → rerender the reader brief and detailed pack from the current verified ledger/queue without rerunning source collection. If the inputs are stale, label the stale boundary rather than silently refreshing the date.
+- `看详细版` / `展开详细版` → read, summarize, or return the existing detailed pack. Do not start new collection unless a named freshness or evidence gap blocks the requested readback.
+- `完整报一遍` / `完整跑一遍` / `不足的信息先补齐` → read the live project/handoff/README, run the current verified pipeline, read back the brief, detailed pack, and quality scans, then fill material gaps with fresh authoritative sources. Lead with the research judgment and keep logs in a compact receipt.
+- `跑全市场简报` → run only when a source-universe collector has real coverage for the requested markets. Otherwise name the unsupported markets and return `blocked-source`; never imply full-market coverage from a narrower live pipeline.
+
+For ordinary daily triggers, paste the reader brief first. For `完整` or gap-filling work, follow it with pipeline/test status, evidence and quality status, and exact remaining source gaps. Paths are receipts, not the product.
 
 For detailed reader style, source-universe selection, and two-tier delivery, load `references/investment-output-style-and-source-universe.md`.
 
@@ -113,6 +125,14 @@ The Audit surface does not replace the reader product. For A-share institutional
 - `source-audit`: claim verdict, authoritative evidence, derivation/inference status, missing proof.
 - `system-build` / `system-debug`: verified artifact or repair, commands/tests, exact failure or residual risk.
 - `boundary-refusal`: refusal based on authority boundary, never on missing data; more evidence can improve comparison but cannot delegate the trade decision to the agent.
+
+### Forwardable output standard
+
+Every formal `client-safe` or otherwise forwardable report must preserve the reader/scope, as-of interval, source boundary, material facts, interpretation, unknowns, research actions, and decision boundary. Do not remove caveats merely to make the note cleaner.
+
+Use this fixed Chinese disclaimer for Chinese forwardable output; translate it without weakening for another language:
+
+> 本报告只用于信息整理、研究讨论和风险提示，不构成投资建议、交易建议或收益承诺。市场有风险，任何交易决策应由使用者基于自己的风险承受能力、资金期限、税务/法律情况和独立判断作出。报告中的数据可能延迟、缺失或有误，请在行动前自行核验。
 
 Formal, reusable, or forwardable prose gets `anti-ai-writing` QA after facts and structure are locked. Never add vividness, certainty, examples, or claims that the evidence did not earn.
 
