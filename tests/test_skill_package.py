@@ -23,7 +23,7 @@ def test_investment_research_skill_package_is_complete() -> None:
     text = SKILL_FILE.read_text(encoding="utf-8")
     metadata = _frontmatter(text)
     assert metadata["name"] == "investment-research"
-    assert metadata["version"] == "2.2.0"
+    assert metadata["version"] == "2.3.0"
 
     linked_paths = set(
         re.findall(r"`((?:references|templates)/[^`]+\.md)`", text)
@@ -37,8 +37,33 @@ def test_investment_research_skill_package_is_complete() -> None:
     )
     assert not missing, f"missing linked skill files: {missing}"
 
+    package_assets = {
+        str(path.relative_to(SKILL_DIR))
+        for directory in ("references", "templates")
+        for path in (SKILL_DIR / directory).glob("*.md")
+    }
+    unlinked = sorted(package_assets - linked_paths)
+    assert not unlinked, f"unlinked skill assets: {unlinked}"
+
+    body = text.split("\n---\n", maxsplit=1)[1]
+    assert len(body.split()) <= 5_000
+
 
 def test_retired_skill_slug_is_absent_from_package() -> None:
     retired = "investment" + "-research-systems"
     for path in SKILL_DIR.rglob("*.md"):
         assert retired not in path.read_text(encoding="utf-8"), path
+
+
+def test_public_skill_has_no_private_runtime_owner_assumptions() -> None:
+    forbidden = {
+        "C 超",
+        "Je" + "f",
+        "local DataOS",
+        "Current/private",
+        "private-state",
+    }
+    for path in SKILL_DIR.rglob("*.md"):
+        text = path.read_text(encoding="utf-8")
+        leaked = sorted(token for token in forbidden if token in text)
+        assert not leaked, f"private runtime assumptions in {path}: {leaked}"

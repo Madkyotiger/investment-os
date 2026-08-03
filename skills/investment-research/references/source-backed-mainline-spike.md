@@ -4,7 +4,7 @@ Use this reference when moving an investment-research prototype from price-only 
 
 ## Architecture choice
 
-For the reader's personal / friends / client-reference investment research system, the stronger architecture is not a single large terminal repo and not ad-hoc repo stitching. Use mature modules by capability, with the local DataOS owning schema, evidence status, report policy, and advisory boundary.
+For the reader's personal / friends / client-reference investment research system, the stronger architecture is not a single large terminal repo and not ad-hoc repo stitching. Use mature modules by capability, with the active project or research system owning schema, evidence status, report policy, and advisory boundary.
 
 Optional deep-research tracer bullet, not the recurring daily dependency baseline:
 

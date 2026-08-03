@@ -35,9 +35,9 @@ Do not make the reader look at system internals.
    - Include evidence, missing variables, next source target, company names to watch, and trigger/kill signals.
 
 2. **Daily brief / short surface**
-   - One Feishu/WeChat phone screen for Product A.
+   - One phone screen on the reader's delivery channel for Product A.
    - Lead with one judgment.
-   - 1-5 short bullets max; fewer or zero is fine.
+   - Zero to four short bullets; fewer or silence is fine.
    - End with the one research action worth doing today.
    - No implementation language, no internal file names, no source-system labels.
    - Do not force Product B depth into the daily short surface.
