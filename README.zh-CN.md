@@ -6,6 +6,8 @@ Investment OS 把市场数据和来源材料整理成研究问题、证据缺口
 
 这是公开评估版本：不荐股，不给仓位建议，也不执行交易。
 
+Investment OS 从设计上就是多市场系统。原有 `daily` watchlist 路径继续覆盖美股、港股、市场代理资产、宏观背景和其他已配置来源；可选的 `global-research` 组合继续保留 OpenBB、FinanceToolkit 与 SEC/EDGAR 研究能力。`a-share-daily` 只是新增的 A 股通道，不替代这些路径，也不限制以后接入其他市场或信息源。
+
 ## 它解决什么问题
 
 大多数投资工具擅长给数据或给答案。Investment OS 更关心答案之前的研究质量：
