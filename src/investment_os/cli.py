@@ -6,7 +6,7 @@ import json
 import os
 import platform
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import numpy as np
@@ -164,8 +164,8 @@ OPTIONAL_PACKAGE_USAGE = {
     "openbb": ["optional_global_research_spike"],
     "financetoolkit": ["optional_global_research_spike"],
     "edgar": ["optional_complex_filing_research"],
-    "akshare": ["optional_china_research"],
-    "tushare": ["optional_china_research"],
+    "akshare": ["a-share-daily", "optional_china_research"],
+    "tushare": ["optional_china_second_source"],
 }
 
 
@@ -194,6 +194,23 @@ def _probe_daily_connectors() -> dict[str, str]:
         else "blocked_missing_identity"
     )
     return statuses
+
+
+def _probe_china_keyless_connector() -> str:
+    try:
+        import akshare as ak
+
+        end = datetime.now(timezone.utc).date()
+        start = end - timedelta(days=14)
+        frame = ak.stock_zh_a_daily(
+            symbol="sh601318",
+            start_date=start.strftime("%Y%m%d"),
+            end_date=end.strftime("%Y%m%d"),
+            adjust="",
+        )
+        return "available" if frame is not None and not frame.empty else "unavailable"
+    except Exception:
+        return "unavailable"
 
 
 def run_doctor(probe_target: str | None = None) -> int:
@@ -236,6 +253,20 @@ def run_doctor(probe_target: str | None = None) -> int:
             "used_by": ["daily_cross_check"],
             "live_probe": "not_run",
         },
+        "akshare": {
+            "adapter_installed": optional_packages["akshare"]["importable"],
+            "configured": optional_packages["akshare"]["importable"],
+            "required_for_china_keyless": True,
+            "used_by": ["a-share-daily"],
+            "live_probe": "not_run",
+        },
+        "tushare": {
+            "adapter_installed": optional_packages["tushare"]["importable"],
+            "configured": bool(os.getenv("TUSHARE_TOKEN", "").strip()),
+            "required_for_china_keyless": False,
+            "used_by": ["optional_china_second_source"],
+            "live_probe": "not_run",
+        },
     }
     if probe_target == "daily":
         probe_results = _probe_daily_connectors()
@@ -257,6 +288,16 @@ def run_doctor(probe_target: str | None = None) -> int:
             if optional_packages["yfinance"]["importable"] and sec_configured
             else "degraded"
         )
+
+    if probe_target == "china-keyless":
+        connectors["akshare"]["live_probe"] = _probe_china_keyless_connector()
+        china_keyless_readiness = (
+            "ready" if connectors["akshare"]["live_probe"] == "available" else "degraded"
+        )
+    else:
+        china_keyless_readiness = (
+            "configured" if optional_packages["akshare"]["importable"] else "degraded"
+        )
     result = {
         "investment_os": __version__,
         "python": platform.python_version(),
@@ -265,6 +306,7 @@ def run_doctor(probe_target: str | None = None) -> int:
         "optional_packages": optional_packages,
         "connectors": connectors,
         "daily_readiness": daily_readiness,
+        "china_keyless_readiness": china_keyless_readiness,
     }
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0 if supported and all(core.values()) else 1
@@ -293,7 +335,11 @@ def main(argv: list[str] | None = None) -> int:
         "doctor",
         help="Separate package importability, connector configuration, and optional live health.",
     )
-    doctor.add_argument("--probe", choices=("daily",), help="Run live health probes for the daily connector set.")
+    doctor.add_argument(
+        "--probe",
+        choices=("daily", "china-keyless"),
+        help="Run live health probes for the selected connector set.",
+    )
 
     demo = subparsers.add_parser("demo", help="Run the deterministic offline evaluation.")
     demo.add_argument("--out", type=Path, default=Path("demo-output"))
@@ -310,6 +356,15 @@ def main(argv: list[str] | None = None) -> int:
     daily.add_argument("--out", type=Path, required=True)
     daily.add_argument("--strict", action="store_true", help="In live mode, fail if every usable source fails.")
     daily.add_argument("--offline", action="store_true", help="Use the deterministic bundled synthetic fixture.")
+
+    a_share = subparsers.add_parser(
+        "a-share-daily",
+        help="Build a keyless A-share institutional-observation brief plus auditable evidence.",
+    )
+    a_share.add_argument("--config", type=Path, required=True, help="A-share watchlist YAML path.")
+    a_share.add_argument("--out", type=Path, required=True)
+    a_share.add_argument("--strict", action="store_true", help="Exit 2 if no symbol has a fresh usable price row.")
+    a_share.add_argument("--offline", action="store_true", help="Use the deterministic bundled synthetic fixture.")
 
     args = parser.parse_args(argv)
     if args.command == "doctor":
@@ -334,6 +389,18 @@ def main(argv: list[str] | None = None) -> int:
         print(f"daily_run={result.status}")
         print(f"brief={result.brief_path}")
         print(f"manifest={result.manifest_path}")
+        return 0
+    if args.command == "a-share-daily":
+        from .a_share_daily import run_a_share_daily
+
+        result = run_a_share_daily(args.config, args.out, offline=args.offline)
+        if args.strict and result.usable_symbols == 0:
+            print("a_share_daily=fail reason=no_usable_rows", file=sys.stderr)
+            return 2
+        print(
+            f"a_share_daily=completed usable_symbols={result.usable_symbols} "
+            f"brief={result.brief_path} receipt={result.receipt_path}"
+        )
         return 0
     parser.error(f"unknown command: {args.command}")
     return 2

@@ -1,0 +1,9 @@
+version: 1
+purpose: "Keyless A-share institutional-observation sample; research routing only."
+symbols:
+  - code: "601318"
+    name: "中国平安"
+  - code: "300750"
+    name: "宁德时代"
+  - code: "688981"
+    name: "中芯国际"

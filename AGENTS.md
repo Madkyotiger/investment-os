@@ -22,6 +22,18 @@ uv run --frozen --isolated --link-mode copy --extra market \
   investment-os run --config configs/watchlist.local.yaml --out live-output --strict
 ```
 
+For an A-share request, use the separate keyless China profile and stock-specific command:
+
+```bash
+uv run --frozen --isolated --link-mode copy --extra china \
+  investment-os doctor --probe china-keyless
+uv run --frozen --isolated --link-mode copy --extra china \
+  investment-os a-share-daily \
+  --config configs/a-share-watchlist.sample.yaml \
+  --out .local/a-share-agent-test \
+  --strict
+```
+
 Use `scripts/verify_dependency_profiles.py` when the task is to verify optional package availability without calling providers or adding those packages to `.venv`:
 
 ```bash
@@ -42,3 +54,14 @@ Evaluation passes only when:
 - any live run reports at least one `data_quality=ok` row when `--strict` is used.
 
 A report file with zero usable source rows is a failed live test, not a successful run.
+
+## Reader output contract
+
+The acceptance record above is the engineering receipt, not the default user answer.
+
+- When the user asks for an A-share observation or daily brief, run `investment-os a-share-daily` and return the contents of `brief.md` first.
+- Keep commands, test counts, adapter names, status codes, logs, and paths out of the reader brief. Add at most one compact pass/fail receipt after it.
+- Detailed evidence belongs in `evidence-ledger.csv`, `coverage-matrix.md`, and `source-receipt.json`; show it only when the user asks to audit or troubleshoot.
+- `no_event` is a successful source check with no matching event. `source_error` is a failed source read. Never collapse one into the other.
+- Tushare is an optional second source for the keyless A-share path. Missing `TUSHARE_TOKEN` does not make `a-share-daily` degraded.
+- Turnover, generic fund-flow fields, and margin financing are not verified institutional net flow. Do not rename them to imply otherwise.

@@ -10,8 +10,10 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Callable
 
+from . import __version__
+
 TRANSIENT_STATUS_CODES = frozenset({408, 425, 429, 500, 502, 503, 504})
-DEFAULT_USER_AGENT = "InvestmentOS/0.1 (+https://github.com/Madkyotiger/investment-os)"
+DEFAULT_USER_AGENT = f"InvestmentOS/{__version__} (+https://github.com/Madkyotiger/investment-os)"
 
 
 @dataclass
