@@ -76,6 +76,8 @@ def test_offline_strict_does_not_fail_on_blocked_candidates(tmp_path: Path):
 
 
 def test_live_strict_passes_when_one_usable_source_succeeds(monkeypatch, tmp_path: Path):
+    generated_at = datetime.now(timezone.utc)
+    source_date = generated_at.date().isoformat()
     candidates = [
         HardSourceCandidate(
             item_id="macro:usable",
@@ -85,8 +87,8 @@ def test_live_strict_passes_when_one_usable_source_succeeds(monkeypatch, tmp_pat
             source="FRED",
             source_type="primary_macro_fred_yields_live",
             source_url="https://fred.example/series",
-            as_of_date="2026-07-28",
-            retrieved_at="2026-07-28T00:00:00+00:00",
+            as_of_date=source_date,
+            retrieved_at=generated_at.isoformat(),
             content_hash="sha256:usable",
             evidence_status="single_source_data",
             counter_explanation="Adjacent official series may disagree.",
@@ -102,7 +104,7 @@ def test_live_strict_passes_when_one_usable_source_succeeds(monkeypatch, tmp_pat
             source="Federal Reserve",
             source_type="primary_macro_calendar",
             source_url="https://fed.example/calendar",
-            as_of_date="2026-07-28",
+            as_of_date=source_date,
         ),
     ]
     monkeypatch.setattr("investment_os.daily_runner.collect_hard_source_candidates", lambda *_args, **_kwargs: candidates)

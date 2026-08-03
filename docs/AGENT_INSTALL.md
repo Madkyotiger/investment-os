@@ -58,6 +58,24 @@ uv run --frozen --isolated --link-mode copy --extra market \
 
 Exit code `2` means the command produced no usable live rows. Check network access and provider behavior; do not reinterpret a degraded run as success.
 
+## Keyless A-share test
+
+Use the isolated China dependency profile. A Tushare token is not required:
+
+```bash
+uv run --frozen --isolated --link-mode copy --extra china \
+  investment-os doctor --probe china-keyless
+uv run --frozen --isolated --link-mode copy --extra china \
+  investment-os a-share-daily \
+  --config configs/a-share-watchlist.sample.yaml \
+  --out .local/a-share-agent-test \
+  --strict
+```
+
+Expected result: the probe reports `china_keyless_readiness=ready`, the run exits `0`, and the output contains `brief.md`, `evidence-ledger.csv`, `coverage-matrix.md`, and `source-receipt.json`. A successful `no_event` is not a source failure. Missing `TUSHARE_TOKEN` is `optional_source_not_configured`, not a degraded keyless run.
+
+For a user asking for the result, paste `brief.md` first. Keep commands, tests, paths, adapter names, and source errors in a one-line receipt or the audit files unless the user explicitly asks to troubleshoot.
+
 To check optional package profiles without calling providers:
 
 ```bash
@@ -65,7 +83,7 @@ uv run --no-project python scripts/verify_dependency_profiles.py market
 uv run --no-project python scripts/verify_dependency_profiles.py global-research china
 ```
 
-SEC requests need `SEC_EDGAR_IDENTITY` in the environment. Tushare needs `TUSHARE_TOKEN`. Never put either real value in the repository. Package-profile import checks do not prove provider health; use `uv run --frozen --extra market investment-os doctor --probe daily` for the daily channels. Stooq is best-effort and may remain unavailable even when its adapter code is installed.
+SEC requests need `SEC_EDGAR_IDENTITY` in the environment. Tushare needs `TUSHARE_TOKEN` only when its optional second-source connector is enabled. Never put either real value in the repository. Package-profile import checks do not prove provider health; use `uv run --frozen --extra market investment-os doctor --probe daily` for the US/HK daily channels and `uv run --frozen --extra china investment-os doctor --probe china-keyless` for A shares. Stooq is best-effort and may remain unavailable even when its adapter code is installed.
 
 ## Clean removal
 

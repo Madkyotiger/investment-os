@@ -14,6 +14,7 @@ This repository is a public evaluation release. It does not recommend, size, or 
 - Research questions, counter-explanations, next-source prompts, and kill signals.
 - A brief renderer that stays quiet when nothing changed enough to deserve attention.
 - An auditable `investment-os daily` runner with explicit watchlist/profile/state paths, source receipts, completed-run manifests, structured failures, and deterministic offline fixtures.
+- A keyless `investment-os a-share-daily` path for A-share stocks, with stock/ETF/index routing, price-provider fallback, institutional-holding disclosures, LHB events, block trades, exchange margin data, and a reader-first brief.
 - Boundary tests that reject trade instructions and internal process leakage from reader output.
 
 It is not a brokerage client, portfolio manager, trading bot, autonomous financial adviser, scheduler, or messaging client.
@@ -57,6 +58,24 @@ uv run investment-os daily \
 
 Run it again with the same `--state` and a different `--out`: the second completed run returns `daily_run=quiet` and does not re-promote unchanged evidence. `--strict` in live mode fails only when no usable fresh live source succeeds; blocked source targets and stale last-known-good observations do not count as current successes. FRED freshness and per-series material-change thresholds, plus the five-calendar-day market snapshot threshold, are explicit in `configs/macro_series.yaml`; the same config is bundled in the wheel for runs outside a checkout. See [`docs/QUICKSTART.md`](docs/QUICKSTART.md).
 
+## Keyless A-share daily
+
+The A-share path does not require a Tushare token:
+
+```bash
+uv run --frozen --extra china investment-os doctor --probe china-keyless
+uv run --frozen --extra china investment-os a-share-daily \
+  --config configs/a-share-watchlist.sample.yaml \
+  --out .local/a-share-daily \
+  --strict
+```
+
+It writes four files: `brief.md` for the reader, plus `evidence-ledger.csv`, `coverage-matrix.md`, and `source-receipt.json` for audit. `no_event` means a source returned successfully but no matching event appeared in the lookback window; `source_error` means the source was not read. They are never interchangeable.
+
+AKShare is the keyless adapter. The stock-price path falls back from Eastmoney to Sina and Tencent rather than routing a stock through an ETF endpoint. Institutional holdings, LHB, and block-trade rows remain convenience/secondary evidence. SSE/SZSE margin rows are official public data accessed through the adapter, but margin financing still does not identify institutional net flow. Tushare is an optional second-source check; an absent `TUSHARE_TOKEN` does not downgrade the keyless path.
+
+The freshness gate remains five calendar days. A long market holiday can therefore make `--strict` fail closed until a new trading-session row appears; stale data is never relabeled fresh.
+
 ## Agent install
 
 An agent can run the evaluation without changing global Python or system configuration:
@@ -99,7 +118,7 @@ uv run investment-os doctor --probe daily
 
 For an unattended local runtime, `scripts/run_daily_local.sh` first reads `${XDG_CONFIG_HOME:-$HOME/.config}/investment-os/runtime.env` (or `INVESTMENT_OS_ENV_FILE`) and falls back to the ignored checkout `.env`.
 
-`doctor` reports package `importable`, connector `configured`, and `live_probe` as separate facts. OpenBB, FinanceToolkit, edgartools, AKShare, and Tushare are not required by `investment-os daily`. Stooq is a best-effort second-source check: a correct adapter path or HTTP 200 is not a successful probe unless usable CSV rows are parsed. The daily runner remains single-source and says so when Stooq is blocked or incomplete.
+`doctor` reports package `importable`, connector `configured`, and `live_probe` as separate facts. OpenBB, FinanceToolkit, edgartools, AKShare, and Tushare are not required by the US/HK-oriented `investment-os daily`; AKShare is required only by `a-share-daily`. Tushare remains optional. Stooq is a best-effort second-source check: a correct adapter path or HTTP 200 is not a successful probe unless usable CSV rows are parsed. The daily runner remains single-source and says so when Stooq is blocked or incomplete.
 
 SEC requests require a valid identity string. It is contact configuration, not an API secret, but real personal contact details still belong in ignored local environment files rather than the public repository:
 
@@ -118,7 +137,7 @@ uv run --no-project python scripts/verify_dependency_profiles.py global-research
 
 These checks install from the lockfile and import the required packages. They do not call live providers. The first run can take longer while `uv` fills its cache.
 
-Tushare requires a token when you use its live connector:
+Tushare requires a token only when you choose its optional live second-source connector:
 
 ```bash
 export TUSHARE_TOKEN="..."
@@ -156,7 +175,7 @@ uv run python scripts/public_release_guard.py
 
 ## Project status
 
-Version `0.1.0` is ready for installation and evaluation, not unattended production. The next proof is a short human-reviewed test using real daily briefs. Scheduling and downstream distribution remain outside this repository.
+Version `0.2.0` adds a real keyless A-share stock path and separates the reader brief from the audit pack. It is ready for installation and human-reviewed evaluation, not unattended production. Scheduling and downstream distribution remain outside this repository.
 
 The repository does not depend on or vendor FinceptTerminal. No FinceptTerminal code is copied here; external systems may be used only as behavioral comparison points during evaluation.
 

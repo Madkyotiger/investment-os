@@ -72,7 +72,8 @@ SEC requests should use `SEC_EDGAR_IDENTITY` in the environment. Do not put a re
 ## Current gaps
 
 - Live official-source reliability varies and is not proven by the synthetic fixture.
-- China official-source coverage is incomplete; AKShare and Tushare remain convenience/secondary adapters.
+- `a-share-daily` now covers individual-stock price history with provider fallback, institutional-holding disclosures, LHB events, block trades, and exchange margin rows. AKShare, institutional-holding, LHB, and block-trade lanes remain convenience/secondary evidence; exchange margin rows are official public data accessed through an adapter.
+- Tushare is optional for the keyless A-share route. Without a token, no cross-source reconciliation is claimed.
 - Official Federal Reserve and U.S. Treasury endpoints remain source-check targets where stable retrieval is unresolved.
 - No scheduler is implemented or enabled.
 - Investment OS leaves channel routing and message delivery to downstream runtimes.

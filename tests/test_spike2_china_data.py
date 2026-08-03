@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import sys
 from datetime import datetime, timezone
+from types import SimpleNamespace
+
+import pytest
 
 from investment_os.spike1_research_memo import EvidenceItem
 from investment_os.spike2_china_data import (
@@ -9,8 +13,10 @@ from investment_os.spike2_china_data import (
     build_china_memo,
     build_china_reconciliation_evidence,
     classify_convenience_evidence,
+    fetch_tushare_status_evidence,
     parse_symbol_arg,
     render_china_memo,
+    tushare_endpoint_for_asset,
 )
 
 
@@ -64,7 +70,7 @@ def test_china_memo_renders_evidence_gaps_without_trade_decision_language():
         assert phrase not in report
 
 
-def test_build_china_memo_keeps_tushare_missing_as_explicit_evidence(monkeypatch):
+def test_build_china_memo_keeps_tushare_optional_state_explicit(monkeypatch):
     def fake_akshare(cfg):
         return [
             EvidenceItem(
@@ -84,14 +90,14 @@ def test_build_china_memo_keeps_tushare_missing_as_explicit_evidence(monkeypatch
             EvidenceItem(
                 symbol=cfg.symbol,
                 category="china_data_source",
-                claim="Tushare package is installed but TUSHARE_TOKEN is not configured",
-                value="token_missing",
+                claim="Tushare is an optional second source and is not configured",
+                value="optional_source_not_configured",
                 source="tushare test",
                 as_of_date="2026-07-05",
                 freshness="runtime_check",
-                status="missing",
+                status="not_applicable",
             )
-        ], ["TUSHARE_TOKEN is missing; Tushare credentialed data not fetched."]
+        ], []
 
     monkeypatch.setattr("investment_os.spike2_china_data.fetch_akshare_etf_evidence", fake_akshare)
     monkeypatch.setattr("investment_os.spike2_china_data.fetch_tushare_status_evidence", fake_tushare)
@@ -99,9 +105,12 @@ def test_build_china_memo_keeps_tushare_missing_as_explicit_evidence(monkeypatch
     memo = build_china_memo(ChinaSymbolConfig(symbol="510300", asset_type="etf", name="沪深300ETF"))
 
     assert len(memo.evidence) == 3
-    assert any(item.value == "token_missing" and item.status == "missing" for item in memo.evidence)
-    assert any(item.category == "china_reconciliation" and item.value == "blocked_by_tushare_token_missing" for item in memo.evidence)
-    assert "TUSHARE_TOKEN is missing; Tushare credentialed data not fetched." in memo.evidence_gaps
+    assert any(item.value == "optional_source_not_configured" and item.status == "not_applicable" for item in memo.evidence)
+    assert any(
+        item.category == "china_reconciliation" and item.value == "optional_second_source_not_configured"
+        for item in memo.evidence
+    )
+    assert memo.evidence_gaps == []
 
 
 def test_china_reconciliation_compares_akshare_and_tushare_dates():
@@ -195,3 +204,43 @@ def test_akshare_and_tushare_are_convenience_not_official_sources():
     assert all(item.source_authority == "convenience_secondary" for item in items)
     assert items[0].underlying_endpoint == "Sina index feed via AKShare"
     assert items[1].underlying_endpoint == "Tushare index_daily"
+
+
+def test_stock_asset_uses_stock_adapter_not_etf(monkeypatch):
+    calls = []
+
+    def fake_stock(cfg):
+        calls.append(("stock", cfg.symbol))
+        return [], []
+
+    def fake_etf(cfg):
+        calls.append(("etf", cfg.symbol))
+        return [], []
+
+    monkeypatch.setattr("investment_os.spike2_china_data.fetch_akshare_stock_evidence", fake_stock, raising=False)
+    monkeypatch.setattr("investment_os.spike2_china_data.fetch_akshare_etf_evidence", fake_etf)
+    monkeypatch.setattr("investment_os.spike2_china_data.fetch_tushare_status_evidence", lambda _cfg: ([], []))
+
+    build_china_memo(ChinaSymbolConfig(symbol="601318", asset_type="stock", name="中国平安"))
+
+    assert calls == [("stock", "601318")]
+
+
+def test_tushare_endpoint_routes_stock_without_reusing_fund_daily():
+    assert tushare_endpoint_for_asset("stock") == "daily"
+    assert tushare_endpoint_for_asset("equity") == "daily"
+    assert tushare_endpoint_for_asset("etf") == "fund_daily"
+    assert tushare_endpoint_for_asset("index") == "index_daily"
+    with pytest.raises(ValueError, match="Unsupported China asset type"):
+        tushare_endpoint_for_asset("bond")
+
+
+def test_missing_tushare_token_is_optional_not_a_gap(monkeypatch):
+    monkeypatch.delenv("TUSHARE_TOKEN", raising=False)
+    monkeypatch.setitem(sys.modules, "tushare", SimpleNamespace(__version__="test"))
+
+    evidence, gaps = fetch_tushare_status_evidence(ChinaSymbolConfig("601318", "stock", "中国平安"))
+
+    assert gaps == []
+    assert evidence[0].value == "optional_source_not_configured"
+    assert evidence[0].status == "not_applicable"

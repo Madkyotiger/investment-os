@@ -25,6 +25,7 @@ Investment OS 把市场数据和来源材料整理成研究问题、证据缺口
 - 区分来源元数据、单一来源数据、交叉核验数据和正文阅读；
 - 生成研究问题、反方解释、下一步查证来源和证伪条件；
 - 没有足够变化时保持安静的简报渲染器；
+- 无需 Tushare Token 的 `investment-os a-share-daily`：支持 A 股个股、stock/ETF/index 分流、行情多源回退、机构持股披露、龙虎榜、大宗交易、交易所两融，以及读者简报与审计包分层；
 - 阻止交易指令和内部过程泄漏到读者输出的边界测试。
 
 它不是券商客户端、投资组合管理器、交易机器人或自动投顾。定时运行和消息推送不在这个公开仓库内。
@@ -54,6 +55,24 @@ demo-output/
 ```
 
 演示通过，说明本地安装、输出路径、排序、简报渲染和边界扫描可以一起工作；它不能证明实时数据源当前可用。
+
+## 无 Key 的 A 股机构观察
+
+这条路径不要求 Tushare Token：
+
+```bash
+uv run --frozen --extra china investment-os doctor --probe china-keyless
+uv run --frozen --extra china investment-os a-share-daily \
+  --config configs/a-share-watchlist.sample.yaml \
+  --out .local/a-share-daily \
+  --strict
+```
+
+它生成四个文件：给人读的 `brief.md`，以及用于复核的 `evidence-ledger.csv`、`coverage-matrix.md`、`source-receipt.json`。`no_event` 表示来源读取成功，但观察窗口内没有该标的事件；`source_error` 表示来源没有读到。两者不能混写。
+
+AKShare 是无 Key 适配层。个股行情会从东方财富回退到新浪、腾讯，不再误走 ETF 接口。机构持股、龙虎榜和大宗交易属于便利性二手证据；沪深交易所两融数据通过适配器读取官方公开数据，但两融仍不能被写成“机构净流入”。Tushare 只是可选二源；没有 `TUSHARE_TOKEN` 不会让无 Key 路径降级。
+
+新鲜度门槛仍是 5 个自然日。A 股长假期间，`--strict` 可能在新交易日数据出现前 fail closed；系统不会把 stale 数据改标成 fresh。
 
 ## Agent 安装
 
@@ -99,7 +118,7 @@ uv run investment-os doctor --probe daily
 
 无人值守的本地运行可调用 `scripts/run_daily_local.sh`。脚本优先读取 `${XDG_CONFIG_HOME:-$HOME/.config}/investment-os/runtime.env`（也可用 `INVESTMENT_OS_ENV_FILE` 指定），没有时才回退到仓库内被忽略的 `.env`。
 
-`doctor` 会分别报告包是否 `importable`、通道是否 `configured`、实时 `live_probe` 是否成功。OpenBB、FinanceToolkit、edgartools、AKShare、Tushare 都不是当前 `investment-os daily` 的必要依赖。Stooq 只是 best-effort 二源：代码路径正确或 HTTP 200 都不算成功，必须实际解析出可用 CSV；否则 daily 继续标记为单一来源，不假装完成交叉核验。
+`doctor` 会分别报告包是否 `importable`、通道是否 `configured`、实时 `live_probe` 是否成功。OpenBB、FinanceToolkit、edgartools、AKShare、Tushare 都不是美股/港股 `investment-os daily` 的必要依赖；只有 `a-share-daily` 需要 AKShare，Tushare 仍为可选。Stooq 只是 best-effort 二源：代码路径正确或 HTTP 200 都不算成功，必须实际解析出可用 CSV；否则 daily 继续标记为单一来源，不假装完成交叉核验。
 
 SEC 请求需要有效身份字符串。它不是 API secret，但真实联系信息仍应只放在被忽略的本地环境文件里：
 
@@ -118,7 +137,7 @@ uv run --no-project python scripts/verify_dependency_profiles.py global-research
 
 这些检查只验证 lockfile 和必要包能否正常导入，不请求实时数据。第一次运行可能需要下载依赖，之后由 `uv` 缓存加速。
 
-Tushare 实时连接需要环境变量：
+只有启用 Tushare 可选实时二源时，才需要环境变量：
 
 ```bash
 export TUSHARE_TOKEN="..."
@@ -155,7 +174,7 @@ uv run python scripts/public_release_guard.py
 
 ## 当前状态
 
-`0.1.0` 适合安装和评估，不适合无人值守生产运行。下一步是让真人短期试用真实日报，确认它确实提高了研究和判断质量。定时运行和下游分发由外部运行时负责，不在本仓库范围内。
+`0.2.0` 新增了真实可跑的无 Key A 股个股路径，并把读者简报和审计包分开。它适合安装和真人复核评估，不适合无人值守生产运行。定时运行和下游分发由外部运行时负责，不在本仓库范围内。
 
 ## License
 

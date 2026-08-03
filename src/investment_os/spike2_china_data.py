@@ -37,7 +37,9 @@ class ChinaResearchMemo:
 
     @property
     def issue_count(self) -> int:
-        return sum(1 for item in self.evidence if item.status != "ok") + len(self.evidence_gaps)
+        return sum(
+            1 for item in self.evidence if item.status not in {"ok", "no_event", "not_applicable"}
+        ) + len(self.evidence_gaps)
 
 
 @dataclass
@@ -56,6 +58,10 @@ def classify_convenience_evidence(items: list[EvidenceItem]) -> None:
                 item.underlying_endpoint = "Eastmoney ETF spot feed via AKShare"
             elif "stock_zh_index_daily" in source:
                 item.underlying_endpoint = "Sina index feed via AKShare"
+            elif "stock_zh_a_hist" in source:
+                item.underlying_endpoint = "Eastmoney or Tencent A-share history via AKShare"
+            elif "stock_zh_a_daily" in source:
+                item.underlying_endpoint = "Sina A-share history via AKShare"
             else:
                 item.underlying_endpoint = "Underlying AKShare endpoint not identified"
         elif source.startswith("tushare"):
@@ -223,6 +229,22 @@ def fetch_akshare_etf_evidence(cfg: ChinaSymbolConfig) -> tuple[list[EvidenceIte
     return evidence, gaps
 
 
+def fetch_akshare_stock_evidence(cfg: ChinaSymbolConfig) -> tuple[list[EvidenceItem], list[str]]:
+    """Collect A-share price evidence without routing a stock through ETF endpoints."""
+    try:
+        import akshare as ak
+
+        from .a_share_daily import AShareSymbol, fetch_stock_price_evidence
+
+        return fetch_stock_price_evidence(
+            AShareSymbol(cfg.symbol, cfg.name),
+            ak,
+            generated_at=datetime.now(timezone.utc),
+        )
+    except Exception as exc:
+        return [], [f"AKShare stock adapter failed: {type(exc).__name__}: {exc}"]
+
+
 def _normalize_index_symbol(symbol: str) -> str:
     if symbol.startswith(("sh", "sz")):
         return symbol
@@ -298,6 +320,17 @@ def fetch_akshare_index_evidence(cfg: ChinaSymbolConfig) -> tuple[list[EvidenceI
     return evidence, gaps
 
 
+def tushare_endpoint_for_asset(asset_type: str) -> str:
+    normalized = asset_type.lower().strip()
+    if normalized == "index":
+        return "index_daily"
+    if normalized == "etf":
+        return "fund_daily"
+    if normalized in {"stock", "equity"}:
+        return "daily"
+    raise ValueError(f"Unsupported China asset type: {asset_type}")
+
+
 def fetch_tushare_status_evidence(cfg: ChinaSymbolConfig) -> tuple[list[EvidenceItem], list[str]]:
     evidence: list[EvidenceItem] = []
     gaps: list[str] = []
@@ -309,27 +342,30 @@ def fetch_tushare_status_evidence(cfg: ChinaSymbolConfig) -> tuple[list[Evidence
             evidence.append(EvidenceItem(
                 symbol=cfg.symbol,
                 category="china_data_source",
-                claim="Tushare package is installed but TUSHARE_TOKEN is not configured",
-                value="token_missing",
+                claim="Tushare is an optional second source and is not configured",
+                value="optional_source_not_configured",
                 source=f"tushare {getattr(ts, '__version__', 'unknown')}",
                 as_of_date=datetime.now(timezone.utc).date().isoformat(),
                 freshness="runtime_check",
-                status="missing",
-                note="Skeleton is ready; credentialed data fetch is intentionally blocked until token is configured.",
+                status="not_applicable",
+                note="The keyless AKShare path remains usable; configure TUSHARE_TOKEN only for an optional second-source check.",
             ))
-            gaps.append("TUSHARE_TOKEN is missing; Tushare credentialed data not fetched.")
             return evidence, gaps
 
         pro = ts.pro_api(token)
         end_date = datetime.now(timezone.utc).date().strftime("%Y%m%d")
         start_date = (datetime.now(timezone.utc).date() - timedelta(days=120)).strftime("%Y%m%d")
         ts_code = cfg.symbol
-        if cfg.asset_type == "index" and "." not in ts_code:
-            ts_code = f"{cfg.symbol}.SH" if cfg.symbol.startswith("0") else f"{cfg.symbol}.SZ"
-        elif cfg.asset_type == "etf" and "." not in ts_code:
-            ts_code = f"{cfg.symbol}.SH" if cfg.symbol.startswith("5") else f"{cfg.symbol}.SZ"
+        if "." not in ts_code:
+            bare = cfg.symbol.split(".", 1)[0]
+            if cfg.asset_type == "index":
+                ts_code = f"{bare}.SH" if bare.startswith(("0", "9")) else f"{bare}.SZ"
+            elif cfg.asset_type == "etf":
+                ts_code = f"{bare}.SH" if bare.startswith("5") else f"{bare}.SZ"
+            elif cfg.asset_type in {"stock", "equity"}:
+                ts_code = f"{bare}.SH" if bare.startswith("6") else f"{bare}.BJ" if bare.startswith(("4", "8", "9")) else f"{bare}.SZ"
 
-        endpoint = "index_daily" if cfg.asset_type == "index" else "fund_daily"
+        endpoint = tushare_endpoint_for_asset(cfg.asset_type)
         df = getattr(pro, endpoint)(ts_code=ts_code, start_date=start_date, end_date=end_date)
         if df is None or df.empty:
             gaps.append(f"Tushare {endpoint} returned no rows for {ts_code}.")
@@ -361,21 +397,21 @@ def build_china_reconciliation_evidence(cfg: ChinaSymbolConfig, items: list[Evid
     gaps: list[str] = []
     runtime_date = datetime.now(timezone.utc).date().isoformat()
 
-    akshare_item = next((item for item in items if item.source.startswith("AKShare") and item.category in {"china_price", "china_index"}), None)
-    tushare_missing = next((item for item in items if item.source.lower().startswith("tushare") and item.value == "token_missing"), None)
+    akshare_item = next((item for item in items if item.source.startswith("AKShare") and item.category in {"china_price", "china_index", "a_share_price"}), None)
+    tushare_optional = next((item for item in items if item.source.lower().startswith("tushare") and item.value == "optional_source_not_configured"), None)
     tushare_item = next((item for item in items if item.category == "china_tushare"), None)
 
-    if tushare_missing is not None:
+    if tushare_optional is not None:
         evidence.append(EvidenceItem(
             symbol=cfg.symbol,
             category="china_reconciliation",
             claim="AKShare/Tushare field reconciliation status",
-            value="blocked_by_tushare_token_missing",
+            value="optional_second_source_not_configured",
             source="local DataOS reconciliation gate",
             as_of_date=runtime_date,
             freshness="runtime_check",
-            status="missing",
-            note="AKShare lane ran; Tushare comparison intentionally blocked until TUSHARE_TOKEN is configured.",
+            status="not_applicable",
+            note="The keyless AKShare lane remains usable; no two-source comparison was claimed.",
         ))
         return evidence, gaps
 
@@ -424,8 +460,12 @@ def build_china_memo(cfg: ChinaSymbolConfig, generated_at: datetime | None = Non
 
     if cfg.asset_type == "index":
         evidence, gaps = fetch_akshare_index_evidence(cfg)
-    else:
+    elif cfg.asset_type in {"stock", "equity"}:
+        evidence, gaps = fetch_akshare_stock_evidence(cfg)
+    elif cfg.asset_type == "etf":
         evidence, gaps = fetch_akshare_etf_evidence(cfg)
+    else:
+        raise ValueError(f"Unsupported China asset type: {cfg.asset_type}")
     classify_convenience_evidence(evidence)
     memo.evidence.extend(evidence)
     for gap in gaps:
@@ -464,7 +504,9 @@ def render_china_memo(memos: list[ChinaResearchMemo], generated_at: datetime | N
     generated_at = generated_at or datetime.now(timezone.utc)
     items = flatten_evidence(memos)
     ok_count = sum(1 for item in items if item.status == "ok")
-    issue_count = sum(1 for item in items if item.status != "ok") + sum(len(m.evidence_gaps) for m in memos)
+    issue_count = sum(
+        1 for item in items if item.status not in {"ok", "no_event", "not_applicable"}
+    ) + sum(len(m.evidence_gaps) for m in memos)
 
     lines: list[str] = []
     lines.append("# Spike 2 China Data Memo — AKShare / Tushare Skeleton")
@@ -522,7 +564,7 @@ def render_china_memo(memos: list[ChinaResearchMemo], generated_at: datetime | N
     lines.append("## 4. Integration Verdict")
     lines.append("")
     lines.append("- AKShare can enter the China-market branch only as a convenience/secondary market-data adapter, not official first-party evidence.")
-    lines.append("- Tushare is wired as a credential-gated supplement; without token it must show as missing, not silently disappear.")
+    lines.append("- Tushare is an optional credential-gated second source; without a token it is recorded as not configured and does not block the keyless AKShare lane.")
     lines.append("- China-market fields now use the same source/as_of_date/freshness/status contract as the US filing-backed memo.")
     lines.append("")
     lines.append("## 5. Decision Boundary")
