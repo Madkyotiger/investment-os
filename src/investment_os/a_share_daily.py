@@ -8,11 +8,15 @@ from dataclasses import asdict, dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import yaml
 
 from .spike1_research_memo import EvidenceItem
+
+
+A_SHARE_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
 
 @dataclass(frozen=True)
@@ -105,12 +109,12 @@ def _as_date_string(value: Any) -> str:
         return str(value)[:10]
 
 
-def _freshness_from_date(as_of: str, stale_after_days: int) -> str:
+def _freshness_from_date(as_of: str, stale_after_days: int, reference_at: datetime) -> str:
     try:
         parsed = date.fromisoformat(str(as_of)[:10])
     except Exception:
         return "unknown"
-    age = (datetime.now(timezone.utc).date() - parsed).days
+    age = (reference_at.astimezone(A_SHARE_TIMEZONE).date() - parsed).days
     if age < 0:
         return "future_date_check"
     if age <= stale_after_days:
@@ -294,7 +298,7 @@ def fetch_stock_price_evidence(
     selected = selected.sort_values(date_col).dropna(subset=[close_col])
     latest = selected.iloc[-1]
     latest_date = _as_date_string(latest[date_col])
-    freshness = _freshness_from_date(latest_date, stale_after_days=5)
+    freshness = _freshness_from_date(latest_date, stale_after_days=5, reference_at=generated_at)
     base_status = "ok" if freshness == "fresh" else "stale"
     close = _safe_float(latest[close_col])
     previous_close = _safe_float(selected.iloc[-2][close_col]) if len(selected) >= 2 else None
@@ -538,7 +542,7 @@ def _event_evidence(
             value=f"events={len(matched)};amount={total_amount if total_amount is not None else 'n/a'}",
             source=receipt.source,
             as_of_date=event_date,
-            freshness=_freshness_from_date(event_date, stale_after_days=35),
+            freshness=_freshness_from_date(event_date, stale_after_days=35, reference_at=generated_at),
             status="ok" if total_amount is not None else "partial",
             generated_at=generated_at,
             note=f"events={len(matched)};amount_field={'usable' if total_amount is not None else 'unavailable'}",
@@ -633,7 +637,7 @@ def _margin_evidence(
             value=value,
             source=receipt.source,
             as_of_date=receipt.as_of_date,
-            freshness=_freshness_from_date(receipt.as_of_date, stale_after_days=5),
+            freshness=_freshness_from_date(receipt.as_of_date, stale_after_days=5, reference_at=generated_at),
             status=status,
             generated_at=generated_at,
             authority=receipt.authority,

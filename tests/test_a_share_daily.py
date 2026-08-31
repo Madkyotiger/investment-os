@@ -6,6 +6,7 @@ from investment_os.a_share_daily import (
     AShareSymbol,
     SourceReceipt,
     _event_evidence,
+    _freshness_from_date,
     _margin_evidence,
     count_usable_symbols,
     fetch_stock_price_evidence,
@@ -20,6 +21,12 @@ def test_market_symbol_routes_shenzhen_shanghai_and_beijing():
     assert market_symbol("688122") == "sh688122"
     assert market_symbol("300502") == "sz300502"
     assert market_symbol("920879") == "bj920879"
+
+
+def test_freshness_uses_a_share_market_date_at_utc_boundary():
+    generated_at = datetime(2026, 8, 3, 16, 30, tzinfo=timezone.utc)
+
+    assert _freshness_from_date("2026-08-04", 5, generated_at) == "fresh"
 
 
 def test_price_collection_falls_back_from_eastmoney_to_sina():

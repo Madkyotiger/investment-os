@@ -177,7 +177,7 @@ uv run python scripts/public_release_guard.py
 
 ## Project status
 
-Version `0.2.0` adds a real keyless A-share stock path and separates the reader brief from the audit pack. It is ready for installation and human-reviewed evaluation, not unattended production. Scheduling and downstream distribution remain outside this repository.
+Version `0.2.1` keeps the keyless A-share path from `0.2.0` and fixes freshness evaluation at the UTC day boundary by using the caller's explicit run timestamp in the Asia/Shanghai market date. It is ready for installation and human-reviewed evaluation, not unattended production. Scheduling and downstream distribution remain outside this repository.
 
 The repository does not depend on or vendor FinceptTerminal. No FinceptTerminal code is copied here; external systems may be used only as behavioral comparison points during evaluation.
 
