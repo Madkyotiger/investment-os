@@ -41,6 +41,9 @@ lanes:
       - "A move is large enough to deserve source lookup, not just price commentary."
   expert_and_media_signals:
     purpose: "Public expert posts, newsletters, sell-side/media summaries and counter-arguments as question fuel."
+    source_catalog: "configs/public_source_catalog.json"
+    dispatch_mode: "on_demand_only"
+    resolver: "investment-os source-plan"
     examples:
       - X expert threads and industry specialists
       - SemiAnalysis / specialist newsletters / public research blogs

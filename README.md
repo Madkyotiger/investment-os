@@ -17,6 +17,7 @@ Investment OS is multi-market by design. The existing `daily` watchlist path con
 - A brief renderer that stays quiet when nothing changed enough to deserve attention.
 - An auditable `investment-os daily` runner with explicit watchlist/profile/state paths, source receipts, completed-run manifests, structured failures, and deterministic offline fixtures.
 - A keyless `investment-os a-share-daily` path for A-share stocks, with stock/ETF/index routing, price-provider fallback, institutional-holding disclosures, LHB events, block trades, exchange margin data, and a reader-first brief.
+- An on-demand public expert/media catalog and `source-plan` resolver that selects a minimal capture plan from explicit topics, geographies, viewpoint roles, access permissions, and limits.
 - Boundary tests that reject trade instructions and internal process leakage from reader output.
 
 It is not a brokerage client, portfolio manager, trading bot, autonomous financial adviser, scheduler, or messaging client.
@@ -59,6 +60,19 @@ uv run investment-os daily \
 ```
 
 Run it again with the same `--state` and a different `--out`: the second completed run returns `daily_run=quiet` and does not re-promote unchanged evidence. `--strict` in live mode fails only when no usable fresh live source succeeds; blocked source targets and stale last-known-good observations do not count as current successes. FRED freshness and per-series material-change thresholds, plus the five-calendar-day market snapshot threshold, are explicit in `configs/macro_series.yaml`; the same config is bundled in the wheel for runs outside a checkout. See [`docs/QUICKSTART.md`](docs/QUICKSTART.md).
+
+## On-demand expert and media source plan
+
+The shared catalog is not a subscription list and does not scan every source by default. A caller must provide a concrete research need and explicit access permissions:
+
+```bash
+uv run investment-os source-plan \
+  --catalog configs/public_source_catalog.json \
+  --request configs/source_request.sample.yaml \
+  --out .local/source-plan.json
+```
+
+The output is a capture plan, not evidence. Expert and media material remains discovery, context, mechanism, consensus, or counterview input; consequential facts still require primary or auditable sources. Every request carries a `candidate_source_ids` allowlist so a reader's source pool cannot expand silently when the shared catalog grows. Sources marked `explicit_need_only` require both an explicit source ID and `allow_explicit_need_only: true`. Missing access permissions fail closed, and unavailable or unconfigured channels are never returned as active capture routes.
 
 ## Keyless A-share daily
 
