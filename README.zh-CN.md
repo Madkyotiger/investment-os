@@ -28,6 +28,7 @@ Investment OS 从设计上就是多市场系统。原有 `daily` watchlist 路�
 - 生成研究问题、反方解释、下一步查证来源和证伪条件；
 - 没有足够变化时保持安静的简报渲染器；
 - 无需 Tushare Token 的 `investment-os a-share-daily`：支持 A 股个股、stock/ETF/index 分流、行情多源回退、机构持股披露、龙虎榜、大宗交易、交易所两融，以及读者简报与审计包分层；
+- 按需调用的公开专家/媒体 Catalog，以及根据主题、地区、观点角色、访问权限和数量上限生成最小抓取计划的 `source-plan`；
 - 阻止交易指令和内部过程泄漏到读者输出的边界测试。
 
 它不是券商客户端、投资组合管理器、交易机器人或自动投顾。定时运行和消息推送不在这个公开仓库内。
@@ -57,6 +58,19 @@ demo-output/
 ```
 
 演示通过，说明本地安装、输出路径、排序、简报渲染和边界扫描可以一起工作；它不能证明实时数据源当前可用。
+
+## 按需生成专家与媒体来源计划
+
+共享 Catalog 不是订阅名单，也不会默认把所有来源常驻扫描。调用方必须先给出具体研究问题和明确的访问权限：
+
+```bash
+uv run investment-os source-plan \
+  --catalog configs/public_source_catalog.json \
+  --request configs/source_request.sample.yaml \
+  --out .local/source-plan.json
+```
+
+输出只是抓取计划，不是证据。专家和媒体内容只能作为发现、背景、机制、共识或反方输入；重要事实仍须回到一手或可审计来源。每个 request 都必须带 `candidate_source_ids` allowlist，避免共享 Catalog 后续扩容时静默扩大某位读者的来源池。标记为 `explicit_need_only` 的来源，必须同时点名 source ID，并明确设置 `allow_explicit_need_only: true`。缺少访问权限时会 fail closed；不可访问或未配置的通道不会被伪装成可抓取入口。
 
 ## 无 Key 的 A 股机构观察
 

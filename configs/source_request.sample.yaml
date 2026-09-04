@@ -1,0 +1,45 @@
+schema_version: 1
+decision:
+  topics:
+    - macro_regime
+    - liquidity
+    - geopolitics
+  geographies:
+    - global
+    - China
+    - Hong Kong
+  viewpoint_roles:
+    - discovery
+    - counterview
+  time_window: "next_30_days"
+access:
+  source_kinds:
+    - expert
+    - media
+  candidate_source_ids:
+    - expert-martin-armstrong
+    - expert-luke-gromen
+    - expert-alasdair-macleod
+    - expert-rick-rule
+    - expert-andy-schectman
+    - expert-grant-williams
+    - expert-j-michael-oliver
+    - expert-simon-hunt
+    - expert-j-ted-oakley
+    - media-hket
+    - media-hkej
+    - media-scmp
+    - media-financial-times
+    - media-bloomberg
+    - media-the-economist
+  allowed_access_states:
+    - public
+    - public_transport_variable
+    - public_and_subscriber_mix
+    - mixed_paywall
+  allow_explicit_need_only: false
+  include_source_ids: []
+  exclude_source_ids: []
+limits:
+  max_sources: 6
+  max_channels_per_source: 2

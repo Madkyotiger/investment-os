@@ -1,0 +1,1045 @@
+{
+  "schema_version": 1,
+  "catalog_id": "investment-os-public-source-catalog",
+  "as_of": "2026-09-04",
+  "expected_source_count": 15,
+  "expected_kind_counts": {
+    "expert": 9,
+    "media": 6
+  },
+  "dispatch_mode": "on_demand_only",
+  "policy": {
+    "selection": "Resolve the smallest useful source set from a named reader decision need. No source is scanned by quota or global default.",
+    "authority": "Catalog entries are discovery, context, mechanism, consensus, or counterview inputs. Consequential facts must return to primary or auditable evidence.",
+    "access": "Use only channels whose access state the reader explicitly permits. Do not bypass paywalls or authenticated feeds.",
+    "video": "Video metadata is discovery only. Claims require a public or authorized transcript with speaker, host channel, publication date, and original URL.",
+    "deduplication": "Deduplicate by underlying event and evidence delta, not headline, source, or channel."
+  },
+  "sources": [
+    {
+      "id": "expert-martin-armstrong",
+      "kind": "expert",
+      "name": "Martin Armstrong",
+      "organization": "Armstrong Economics",
+      "source_role": "discovery_not_fact_authority",
+      "routing_tier": "explicit_need_only",
+      "topics": [
+        "macro_regime",
+        "monetary_policy",
+        "sovereign_debt",
+        "geopolitics"
+      ],
+      "geographies": [
+        "global"
+      ],
+      "viewpoint_roles": [
+        "discovery",
+        "counterview"
+      ],
+      "use_limits": [
+        "proprietary_or_nontransparent_method",
+        "primary_source_verification_required"
+      ],
+      "channels": [
+        {
+          "type": "website",
+          "url": "https://www.armstrongeconomics.com/",
+          "status": "verified_public",
+          "access_state": "public",
+          "priority": 1,
+          "capture": "web_search_then_web_extract"
+        },
+        {
+          "type": "rss",
+          "url": "https://www.armstrongeconomics.com/feed/",
+          "status": "verified_public",
+          "access_state": "public",
+          "priority": 1,
+          "capture": "web_extract"
+        },
+        {
+          "type": "x",
+          "handle": "@ArmstrongEcon",
+          "url": "https://x.com/ArmstrongEcon",
+          "status": "verified_official",
+          "access_state": "public_transport_variable",
+          "priority": 2,
+          "capture": "x_search_if_available_else_web_search"
+        },
+        {
+          "type": "x",
+          "handle": "@StrongEconomics",
+          "url": "https://x.com/StrongEconomics",
+          "status": "verified_official_institution",
+          "access_state": "public_transport_variable",
+          "priority": 2,
+          "capture": "x_search_if_available_else_web_search"
+        },
+        {
+          "type": "youtube",
+          "channel_id": "UCaoSDiNkFmGQfvhvZMWxOHw",
+          "url": "https://www.youtube.com/@MartinArmstrongAE/videos",
+          "status": "verified_official",
+          "access_state": "public_transport_variable",
+          "priority": 3,
+          "capture": "youtube_metadata_then_public_transcript"
+        }
+      ]
+    },
+    {
+      "id": "expert-luke-gromen",
+      "kind": "expert",
+      "name": "Luke Gromen",
+      "organization": "FFTT / Forest for the Trees",
+      "source_role": "discovery_not_fact_authority",
+      "routing_tier": "shared_core_on_demand",
+      "topics": [
+        "macro_regime",
+        "liquidity",
+        "sovereign_debt",
+        "energy"
+      ],
+      "geographies": [
+        "global",
+        "US"
+      ],
+      "viewpoint_roles": [
+        "discovery",
+        "mechanism",
+        "counterview"
+      ],
+      "use_limits": [
+        "primary_source_verification_required"
+      ],
+      "channels": [
+        {
+          "type": "website",
+          "url": "https://fftt-llc.com/media/",
+          "status": "verified_public",
+          "access_state": "public",
+          "priority": 1,
+          "capture": "web_search_then_web_extract"
+        },
+        {
+          "type": "rss",
+          "url": "https://fftt-llc.com/feed/",
+          "status": "verified_public",
+          "access_state": "public",
+          "priority": 1,
+          "capture": "web_extract"
+        },
+        {
+          "type": "x",
+          "handle": "@LukeGromen",
+          "url": "https://x.com/LukeGromen",
+          "status": "verified_official",
+          "access_state": "public_transport_variable",
+          "priority": 2,
+          "capture": "x_search_if_available_else_web_search"
+        },
+        {
+          "type": "youtube",
+          "channel_id": "UC3dgTGurzmoefBchduxs4Gg",
+          "url": "https://www.youtube.com/@LukeGromenFFTTLLC/videos",
+          "status": "verified_official",
+          "access_state": "public_transport_variable",
+          "priority": 3,
+          "capture": "youtube_metadata_then_public_transcript"
+        }
+      ]
+    },
+    {
+      "id": "expert-alasdair-macleod",
+      "kind": "expert",
+      "name": "Alasdair Macleod",
+      "organization": "MacleodFinance",
+      "source_role": "discovery_not_fact_authority",
+      "routing_tier": "theme_counterview_on_demand",
+      "topics": [
+        "monetary_system",
+        "credit",
+        "inflation",
+        "precious_metals"
+      ],
+      "geographies": [
+        "global"
+      ],
+      "viewpoint_roles": [
+        "discovery",
+        "counterview"
+      ],
+      "use_limits": [
+        "theme_specific",
+        "primary_source_verification_required"
+      ],
+      "channels": [
+        {
+          "type": "website",
+          "url": "https://www.macleodfinance.com/",
+          "status": "verified_public",
+          "access_state": "public_and_subscriber_mix",
+          "priority": 1,
+          "capture": "web_search_then_web_extract"
+        },
+        {
+          "type": "rss",
+          "url": "https://www.macleodfinance.com/feed",
+          "status": "verified_public",
+          "access_state": "public",
+          "priority": 1,
+          "capture": "web_extract"
+        },
+        {
+          "type": "x",
+          "handle": "@MacleodFinance",
+          "url": "https://x.com/MacleodFinance",
+          "status": "verified_official",
+          "access_state": "public_transport_variable",
+          "priority": 2,
+          "capture": "x_search_if_available_else_web_search"
+        },
+        {
+          "type": "youtube",
+          "query": "\"Alasdair Macleod\" interview",
+          "status": "no_verified_owned_channel",
+          "access_state": "not_available",
+          "priority": 3,
+          "capture": "web_search_guest_interview_then_public_transcript",
+          "speaker_verification_required": true
+        }
+      ]
+    },
+    {
+      "id": "expert-rick-rule",
+      "kind": "expert",
+      "name": "Rick Rule",
+      "organization": "Rule Investment Media",
+      "source_role": "discovery_not_fact_authority",
+      "routing_tier": "shared_core_on_demand",
+      "topics": [
+        "commodities",
+        "energy",
+        "mining",
+        "resource_cycle"
+      ],
+      "geographies": [
+        "global",
+        "US",
+        "Canada"
+      ],
+      "viewpoint_roles": [
+        "discovery",
+        "mechanism",
+        "counterview"
+      ],
+      "use_limits": [
+        "theme_specific",
+        "primary_source_verification_required"
+      ],
+      "channels": [
+        {
+          "type": "website",
+          "url": "https://www.ruleinvestmentmedia.com/",
+          "status": "verified_public",
+          "access_state": "public",
+          "priority": 1,
+          "capture": "web_search_then_web_extract"
+        },
+        {
+          "type": "rss",
+          "url": "https://www.ruleinvestmentmedia.com/feed/",
+          "status": "not_found_404",
+          "access_state": "not_available",
+          "priority": 4,
+          "capture": "not_configured_do_not_claim"
+        },
+        {
+          "type": "x",
+          "handle": "@RealRickRule",
+          "url": "https://x.com/RealRickRule",
+          "status": "verified_official",
+          "access_state": "public_transport_variable",
+          "priority": 2,
+          "capture": "x_search_if_available_else_web_search"
+        },
+        {
+          "type": "youtube",
+          "channel_id": "UCLReD7YczIpNz-gDIVF1hdQ",
+          "url": "https://www.youtube.com/@RuleInvestmentMedia/videos",
+          "status": "verified_official",
+          "access_state": "public_transport_variable",
+          "priority": 3,
+          "capture": "youtube_metadata_then_public_transcript"
+        }
+      ]
+    },
+    {
+      "id": "expert-andy-schectman",
+      "kind": "expert",
+      "name": "Andy Schectman",
+      "organization": "Miles Franklin",
+      "source_role": "discovery_not_fact_authority",
+      "routing_tier": "explicit_need_only",
+      "topics": [
+        "precious_metals",
+        "physical_market",
+        "monetary_system"
+      ],
+      "geographies": [
+        "global",
+        "US"
+      ],
+      "viewpoint_roles": [
+        "discovery",
+        "counterview"
+      ],
+      "use_limits": [
+        "commercial_product_affiliation",
+        "primary_source_verification_required"
+      ],
+      "channels": [
+        {
+          "type": "website",
+          "url": "https://milesfranklin.com/andy-schectman/",
+          "status": "verified_public",
+          "access_state": "public",
+          "priority": 1,
+          "capture": "web_search_then_web_extract"
+        },
+        {
+          "type": "rss",
+          "url": "https://milesfranklin.com/feed/",
+          "status": "verified_public_low_volume",
+          "access_state": "public",
+          "priority": 1,
+          "capture": "web_extract"
+        },
+        {
+          "type": "x",
+          "handle": "@ASchectman",
+          "url": "https://x.com/ASchectman",
+          "status": "verified_official",
+          "access_state": "public_transport_variable",
+          "priority": 2,
+          "capture": "x_search_if_available_else_web_search"
+        },
+        {
+          "type": "x",
+          "handle": "@MilesFranklinCo",
+          "url": "https://x.com/MilesFranklinCo",
+          "status": "verified_official_institution",
+          "access_state": "public_transport_variable",
+          "priority": 2,
+          "capture": "x_search_if_available_else_web_search"
+        },
+        {
+          "type": "youtube",
+          "channel_id": "UC_EzgYSqu4a6-Po65FxAoKg",
+          "url": "https://www.youtube.com/@MilesFranklinMedia/videos",
+          "status": "verified_official_institution",
+          "access_state": "public_transport_variable",
+          "priority": 3,
+          "capture": "youtube_metadata_then_public_transcript"
+        }
+      ]
+    },
+    {
+      "id": "expert-grant-williams",
+      "kind": "expert",
+      "name": "Grant Williams",
+      "organization": "Things That Make You Go Hmmm / The Grant Williams Podcast",
+      "source_role": "discovery_not_fact_authority",
+      "routing_tier": "shared_core_on_demand",
+      "topics": [
+        "macro_regime",
+        "market_structure",
+        "liquidity",
+        "geopolitics",
+        "risk"
+      ],
+      "geographies": [
+        "global"
+      ],
+      "viewpoint_roles": [
+        "discovery",
+        "mechanism",
+        "counterview"
+      ],
+      "use_limits": [
+        "primary_source_verification_required"
+      ],
+      "channels": [
+        {
+          "type": "website",
+          "url": "https://www.grant-williams.com/",
+          "status": "verified_public",
+          "access_state": "public_and_subscriber_mix",
+          "priority": 1,
+          "capture": "web_search_then_web_extract"
+        },
+        {
+          "type": "podcast",
+          "url": "https://www.grant-williams.com/grant-williams-podcast/",
+          "status": "verified_official",
+          "access_state": "public_and_subscriber_mix",
+          "priority": 1,
+          "capture": "web_search_then_web_extract"
+        },
+        {
+          "type": "rss",
+          "url": "https://www.grant-williams.com/feed/",
+          "status": "unstable_500",
+          "access_state": "not_available",
+          "priority": 4,
+          "capture": "not_configured_do_not_claim"
+        },
+        {
+          "type": "x",
+          "handle": "@ttmygh",
+          "url": "https://x.com/ttmygh",
+          "status": "verified_official",
+          "access_state": "public_transport_variable",
+          "priority": 2,
+          "capture": "x_search_if_available_else_web_search"
+        },
+        {
+          "type": "youtube",
+          "channel_id": "UCLcGHrddiriY68CRopXwkvg",
+          "url": "https://www.youtube.com/@GWTTMYGH/videos",
+          "status": "verified_official",
+          "access_state": "public_transport_variable",
+          "priority": 3,
+          "capture": "youtube_metadata_then_public_transcript"
+        }
+      ]
+    },
+    {
+      "id": "expert-j-michael-oliver",
+      "kind": "expert",
+      "name": "J. Michael Oliver",
+      "organization": "Momentum Structural Analysis",
+      "source_role": "discovery_not_fact_authority",
+      "routing_tier": "explicit_need_only",
+      "topics": [
+        "technical_structure",
+        "market_action",
+        "commodities",
+        "precious_metals"
+      ],
+      "geographies": [
+        "global",
+        "US"
+      ],
+      "viewpoint_roles": [
+        "discovery",
+        "counterview"
+      ],
+      "use_limits": [
+        "proprietary_or_nontransparent_method",
+        "primary_source_verification_required"
+      ],
+      "channels": [
+        {
+          "type": "website",
+          "url": "https://www.olivermsa.com/",
+          "status": "verified_public",
+          "access_state": "public_and_subscriber_mix",
+          "priority": 1,
+          "capture": "web_search_then_web_extract"
+        },
+        {
+          "type": "rss",
+          "url": "https://www.olivermsa.com/feed/",
+          "status": "not_found_404",
+          "access_state": "not_available",
+          "priority": 4,
+          "capture": "not_configured_do_not_claim"
+        },
+        {
+          "type": "x",
+          "handle": "@Oliver_MSA",
+          "url": "https://x.com/Oliver_MSA",
+          "status": "verified_official_institution",
+          "access_state": "public_transport_variable",
+          "priority": 2,
+          "capture": "x_search_if_available_else_web_search"
+        },
+        {
+          "type": "youtube",
+          "query": "\"Michael Oliver\" \"Momentum Structural Analysis\" interview",
+          "status": "no_verified_owned_channel",
+          "access_state": "not_available",
+          "priority": 3,
+          "capture": "web_search_guest_interview_then_public_transcript",
+          "speaker_verification_required": true
+        }
+      ]
+    },
+    {
+      "id": "expert-simon-hunt",
+      "kind": "expert",
+      "name": "Simon Hunt",
+      "organization": "Simon Hunt Strategic Services",
+      "source_role": "discovery_not_fact_authority",
+      "routing_tier": "theme_counterview_on_demand",
+      "topics": [
+        "geopolitics",
+        "china_policy",
+        "commodities",
+        "energy"
+      ],
+      "geographies": [
+        "global",
+        "China",
+        "Asia"
+      ],
+      "viewpoint_roles": [
+        "discovery",
+        "mechanism",
+        "counterview"
+      ],
+      "use_limits": [
+        "theme_specific",
+        "primary_source_verification_required"
+      ],
+      "channels": [
+        {
+          "type": "website",
+          "url": "https://simonhuntstrategicservices.substack.com/",
+          "status": "verified_public",
+          "access_state": "public_and_subscriber_mix",
+          "priority": 1,
+          "capture": "web_search_then_web_extract"
+        },
+        {
+          "type": "rss",
+          "url": "https://simonhuntstrategicservices.substack.com/feed",
+          "status": "verified_public",
+          "access_state": "public",
+          "priority": 1,
+          "capture": "web_extract"
+        },
+        {
+          "type": "x",
+          "query": "\"Simon Hunt Strategic Services\"",
+          "status": "no_verified_official_account",
+          "access_state": "not_available",
+          "priority": 4,
+          "capture": "not_configured_do_not_claim"
+        },
+        {
+          "type": "youtube",
+          "query": "\"Simon Hunt\" \"Strategic Services\" interview",
+          "status": "no_verified_owned_channel",
+          "access_state": "not_available",
+          "priority": 3,
+          "capture": "web_search_guest_interview_then_public_transcript",
+          "speaker_verification_required": true
+        }
+      ]
+    },
+    {
+      "id": "expert-j-ted-oakley",
+      "kind": "expert",
+      "name": "J. Ted Oakley",
+      "organization": "Oxbow Advisors",
+      "source_role": "discovery_not_fact_authority",
+      "routing_tier": "shared_core_on_demand",
+      "topics": [
+        "wealth_preservation",
+        "macro_regime",
+        "liquidity",
+        "risk"
+      ],
+      "geographies": [
+        "global",
+        "US"
+      ],
+      "viewpoint_roles": [
+        "discovery",
+        "mechanism",
+        "counterview"
+      ],
+      "use_limits": [
+        "advisory_business_affiliation",
+        "primary_source_verification_required"
+      ],
+      "channels": [
+        {
+          "type": "website",
+          "url": "https://oxbowadvisors.com/j-ted-oakley-cfa-cfp-managing-partner/",
+          "status": "verified_public",
+          "access_state": "public",
+          "priority": 1,
+          "capture": "web_search_then_web_extract"
+        },
+        {
+          "type": "website",
+          "url": "https://oxbowadvisors.com/ted-oakleys-interview-series/",
+          "status": "verified_public",
+          "access_state": "public",
+          "priority": 1,
+          "capture": "web_search_then_web_extract"
+        },
+        {
+          "type": "rss",
+          "url": "https://oxbowadvisors.com/feed/",
+          "status": "verified_public",
+          "access_state": "public",
+          "priority": 1,
+          "capture": "web_extract"
+        },
+        {
+          "type": "x",
+          "handle": "@Oxbow_Advisors",
+          "url": "https://x.com/Oxbow_Advisors",
+          "status": "verified_official_institution",
+          "access_state": "public_transport_variable",
+          "priority": 2,
+          "capture": "x_search_if_available_else_web_search"
+        },
+        {
+          "type": "youtube",
+          "channel_id": "UCuIid-uo26jdYNT67Rd4STQ",
+          "url": "https://www.youtube.com/channel/UCuIid-uo26jdYNT67Rd4STQ/videos",
+          "status": "verified_official_institution",
+          "access_state": "public_transport_variable",
+          "priority": 3,
+          "capture": "youtube_metadata_then_public_transcript"
+        }
+      ]
+    },
+    {
+      "id": "media-hket",
+      "kind": "media",
+      "name": "香港经济日报",
+      "organization": "HKET",
+      "source_role": "discovery_not_fact_authority",
+      "routing_tier": "shared_core_on_demand",
+      "topics": [
+        "china_policy",
+        "hong_kong_markets",
+        "company_events",
+        "macro_regime",
+        "market_action"
+      ],
+      "geographies": [
+        "Hong Kong",
+        "China",
+        "Asia"
+      ],
+      "viewpoint_roles": [
+        "discovery",
+        "consensus",
+        "context"
+      ],
+      "use_limits": [
+        "secondary_source",
+        "paywall_or_subscription_mix"
+      ],
+      "channels": [
+        {
+          "type": "website",
+          "url": "https://www.hket.com/",
+          "status": "verified_public",
+          "access_state": "public_and_subscriber_mix",
+          "priority": 1,
+          "capture": "web_search_then_web_extract"
+        },
+        {
+          "type": "rss",
+          "url": "https://www.hket.com/rss/finance",
+          "status": "verified_public_transport_variable",
+          "access_state": "public_transport_variable",
+          "priority": 1,
+          "capture": "web_extract"
+        },
+        {
+          "type": "rss",
+          "url": "https://www.hket.com/rss/world",
+          "status": "verified_public_transport_variable",
+          "access_state": "public_transport_variable",
+          "priority": 1,
+          "capture": "web_extract"
+        },
+        {
+          "type": "rss",
+          "url": "https://www.hket.com/rss/china",
+          "status": "verified_public_transport_variable",
+          "access_state": "public_transport_variable",
+          "priority": 1,
+          "capture": "web_extract"
+        },
+        {
+          "type": "x",
+          "handle": "@EconomicTimesHK",
+          "url": "https://x.com/EconomicTimesHK",
+          "status": "verified_official_low_activity",
+          "access_state": "public_transport_variable",
+          "priority": 2,
+          "capture": "x_search_if_available_else_web_search"
+        },
+        {
+          "type": "youtube",
+          "channel_id": "UCFgvtFvTFRjqhGC1XfIB02w",
+          "url": "https://www.youtube.com/channel/UCFgvtFvTFRjqhGC1XfIB02w/videos",
+          "status": "verified_official",
+          "access_state": "public_transport_variable",
+          "priority": 3,
+          "capture": "youtube_metadata_then_public_transcript"
+        }
+      ]
+    },
+    {
+      "id": "media-hkej",
+      "kind": "media",
+      "name": "信报",
+      "organization": "Hong Kong Economic Journal",
+      "source_role": "discovery_not_fact_authority",
+      "routing_tier": "shared_core_on_demand",
+      "topics": [
+        "hong_kong_markets",
+        "china_policy",
+        "company_events",
+        "macro_regime",
+        "market_action"
+      ],
+      "geographies": [
+        "Hong Kong",
+        "China",
+        "Asia"
+      ],
+      "viewpoint_roles": [
+        "discovery",
+        "consensus",
+        "context"
+      ],
+      "use_limits": [
+        "secondary_source",
+        "paywall_or_subscription_mix"
+      ],
+      "channels": [
+        {
+          "type": "website",
+          "url": "https://www1.hkej.com/",
+          "status": "verified_public",
+          "access_state": "public_and_subscriber_mix",
+          "priority": 1,
+          "capture": "web_search_then_web_extract"
+        },
+        {
+          "type": "rss",
+          "query": "site:hkej.com RSS 信报",
+          "status": "not_found_in_audit",
+          "access_state": "not_available",
+          "priority": 4,
+          "capture": "not_configured_do_not_claim"
+        },
+        {
+          "type": "x",
+          "handle": "@HKEJGROUP",
+          "url": "https://x.com/HKEJGROUP",
+          "status": "verified_official",
+          "access_state": "public_transport_variable",
+          "priority": 2,
+          "capture": "x_search_if_available_else_web_search"
+        },
+        {
+          "type": "youtube",
+          "channel_id": "UClRaYVzu5DIh3kRZkXIX9WA",
+          "url": "https://www.youtube.com/channel/UClRaYVzu5DIh3kRZkXIX9WA/videos",
+          "status": "verified_official",
+          "access_state": "public_transport_variable",
+          "priority": 3,
+          "capture": "youtube_metadata_then_public_transcript"
+        }
+      ]
+    },
+    {
+      "id": "media-scmp",
+      "kind": "media",
+      "name": "South China Morning Post",
+      "organization": "SCMP",
+      "source_role": "discovery_not_fact_authority",
+      "routing_tier": "shared_core_on_demand",
+      "topics": [
+        "china_policy",
+        "geopolitics",
+        "macro_regime",
+        "company_events",
+        "commodities"
+      ],
+      "geographies": [
+        "Hong Kong",
+        "China",
+        "Asia",
+        "global"
+      ],
+      "viewpoint_roles": [
+        "discovery",
+        "consensus",
+        "context"
+      ],
+      "use_limits": [
+        "secondary_source",
+        "paywall_or_subscription_mix"
+      ],
+      "channels": [
+        {
+          "type": "website",
+          "url": "https://www.scmp.com/",
+          "status": "verified_public",
+          "access_state": "public_and_subscriber_mix",
+          "priority": 1,
+          "capture": "web_search_then_web_extract"
+        },
+        {
+          "type": "rss",
+          "url": "https://www.scmp.com/rss/feed/",
+          "status": "verified_public_transport_variable",
+          "access_state": "public_transport_variable",
+          "priority": 1,
+          "capture": "web_extract"
+        },
+        {
+          "type": "x",
+          "handle": "@SCMPNews",
+          "url": "https://x.com/SCMPNews",
+          "status": "verified_official",
+          "access_state": "public_transport_variable",
+          "priority": 2,
+          "capture": "x_search_if_available_else_web_search"
+        },
+        {
+          "type": "youtube",
+          "channel_id": "UC4SUWizzKc1tptprBkWjX2Q",
+          "url": "https://www.youtube.com/@SouthChinaMorningPost/videos",
+          "status": "verified_official",
+          "access_state": "public_transport_variable",
+          "priority": 3,
+          "capture": "youtube_metadata_then_public_transcript"
+        }
+      ]
+    },
+    {
+      "id": "media-financial-times",
+      "kind": "media",
+      "name": "Financial Times",
+      "organization": "FT",
+      "source_role": "discovery_not_fact_authority",
+      "routing_tier": "shared_core_on_demand",
+      "topics": [
+        "macro_regime",
+        "company_events",
+        "market_action",
+        "geopolitics",
+        "industry_and_companies"
+      ],
+      "geographies": [
+        "global",
+        "US",
+        "Europe",
+        "Asia"
+      ],
+      "viewpoint_roles": [
+        "discovery",
+        "consensus",
+        "context",
+        "mechanism"
+      ],
+      "use_limits": [
+        "secondary_source",
+        "paywall_or_subscription_mix"
+      ],
+      "channels": [
+        {
+          "type": "website",
+          "url": "https://www.ft.com/",
+          "status": "verified_public",
+          "access_state": "mixed_paywall",
+          "priority": 1,
+          "capture": "web_search_then_web_extract"
+        },
+        {
+          "type": "rss",
+          "url": "https://help.ft.com/faq/email-alerts-and-contact-preferences/how-do-i-set-up-a-myft-rss-feed/",
+          "status": "account_required_configuration_guide",
+          "access_state": "account_required",
+          "priority": 4,
+          "capture": "not_configured_do_not_claim"
+        },
+        {
+          "type": "x",
+          "handle": "@FT",
+          "url": "https://x.com/FT",
+          "status": "verified_official",
+          "access_state": "public_transport_variable",
+          "priority": 2,
+          "capture": "x_search_if_available_else_web_search"
+        },
+        {
+          "type": "youtube",
+          "channel_id": "UCoUxsWakJucWg46KW5RsvPw",
+          "url": "https://www.youtube.com/@FinancialTimes/videos",
+          "status": "verified_official",
+          "access_state": "public_transport_variable",
+          "priority": 3,
+          "capture": "youtube_metadata_then_public_transcript"
+        }
+      ]
+    },
+    {
+      "id": "media-bloomberg",
+      "kind": "media",
+      "name": "Bloomberg",
+      "organization": "Bloomberg",
+      "source_role": "discovery_not_fact_authority",
+      "routing_tier": "shared_core_on_demand",
+      "topics": [
+        "macro_regime",
+        "company_events",
+        "market_action",
+        "geopolitics",
+        "commodities",
+        "liquidity"
+      ],
+      "geographies": [
+        "global",
+        "US",
+        "Europe",
+        "Asia",
+        "China"
+      ],
+      "viewpoint_roles": [
+        "discovery",
+        "consensus",
+        "context",
+        "mechanism"
+      ],
+      "use_limits": [
+        "secondary_source",
+        "paywall_or_subscription_mix"
+      ],
+      "channels": [
+        {
+          "type": "website",
+          "url": "https://www.bloomberg.com/latest",
+          "status": "verified_public",
+          "access_state": "mixed_paywall",
+          "priority": 1,
+          "capture": "web_search_then_web_extract"
+        },
+        {
+          "type": "paid_feed",
+          "url": "https://www.bloomberg.com/company/press/bloomberg-launches-customizable-real-time-news-feeds-for-enhanced-systematic-workflows/",
+          "status": "paid_enterprise_product_not_configured",
+          "access_state": "paid_product",
+          "priority": 4,
+          "capture": "not_configured_do_not_claim"
+        },
+        {
+          "type": "x",
+          "handle": "@business",
+          "url": "https://x.com/business",
+          "status": "verified_official_news",
+          "access_state": "public_transport_variable",
+          "priority": 2,
+          "capture": "x_search_if_available_else_web_search"
+        },
+        {
+          "type": "x",
+          "handle": "@Bloomberg",
+          "url": "https://x.com/Bloomberg",
+          "status": "verified_official_corporate",
+          "access_state": "public_transport_variable",
+          "priority": 2,
+          "capture": "x_search_if_available_else_web_search"
+        },
+        {
+          "type": "youtube",
+          "channel_id": "UCIALMKvObZNtJ6AmdCLP7Lg",
+          "url": "https://www.youtube.com/channel/UCIALMKvObZNtJ6AmdCLP7Lg/videos",
+          "status": "verified_official_television",
+          "access_state": "public_transport_variable",
+          "priority": 3,
+          "capture": "youtube_metadata_then_public_transcript"
+        }
+      ]
+    },
+    {
+      "id": "media-the-economist",
+      "kind": "media",
+      "name": "The Economist",
+      "organization": "The Economist",
+      "source_role": "discovery_not_fact_authority",
+      "routing_tier": "shared_core_on_demand",
+      "topics": [
+        "macro_regime",
+        "geopolitics",
+        "china_policy",
+        "industry_and_companies"
+      ],
+      "geographies": [
+        "global",
+        "US",
+        "Europe",
+        "Asia",
+        "China"
+      ],
+      "viewpoint_roles": [
+        "discovery",
+        "consensus",
+        "context",
+        "mechanism"
+      ],
+      "use_limits": [
+        "secondary_source",
+        "paywall_or_subscription_mix"
+      ],
+      "channels": [
+        {
+          "type": "website",
+          "url": "https://www.economist.com/",
+          "status": "verified_public",
+          "access_state": "mixed_paywall",
+          "priority": 1,
+          "capture": "web_search_then_web_extract"
+        },
+        {
+          "type": "rss",
+          "url": "https://www.economist.com/rss",
+          "status": "not_machine_feed_subscription_page",
+          "access_state": "mixed_paywall",
+          "priority": 4,
+          "capture": "not_configured_do_not_claim"
+        },
+        {
+          "type": "podcast",
+          "url": "https://www.economist.com/podcasts",
+          "status": "verified_official",
+          "access_state": "public_and_subscriber_mix",
+          "priority": 2,
+          "capture": "web_search_then_web_extract"
+        },
+        {
+          "type": "x",
+          "handle": "@TheEconomist",
+          "url": "https://x.com/TheEconomist",
+          "status": "verified_official",
+          "access_state": "public_transport_variable",
+          "priority": 2,
+          "capture": "x_search_if_available_else_web_search"
+        },
+        {
+          "type": "youtube",
+          "channel_id": "UC0p5jTq6Xx_DosDFxVXnWaQ",
+          "url": "https://www.youtube.com/@TheEconomist/videos",
+          "status": "verified_official",
+          "access_state": "public_transport_variable",
+          "priority": 3,
+          "capture": "youtube_metadata_then_public_transcript"
+        }
+      ]
+    }
+  ]
+}

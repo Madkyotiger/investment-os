@@ -16,6 +16,7 @@ from . import __version__
 from .cxo_intelligence import CXOProfile, build_cxo_brief_items, write_cxo_outputs
 from .daily_runner import DailyRunError, run_daily
 from .pipeline import SymbolConfig, analyze_history, metrics_to_csv, render_report, run as run_pipeline
+from .source_catalog import SourceCatalogError, build_source_plan
 from .source_universe_intake import SourceCandidate
 
 
@@ -366,6 +367,19 @@ def main(argv: list[str] | None = None) -> int:
     a_share.add_argument("--strict", action="store_true", help="Exit 2 if no symbol has a fresh usable price row.")
     a_share.add_argument("--offline", action="store_true", help="Use the deterministic bundled synthetic fixture.")
 
+    source_plan = subparsers.add_parser(
+        "source-plan",
+        help="Resolve an on-demand expert/media capture plan from an explicit reader need.",
+    )
+    source_plan.add_argument(
+        "--catalog",
+        type=Path,
+        default=Path("configs/public_source_catalog.json"),
+        help="Shared public source catalog JSON path.",
+    )
+    source_plan.add_argument("--request", type=Path, required=True, help="Reader source-request YAML path.")
+    source_plan.add_argument("--out", type=Path, required=True, help="Output capture-plan JSON path.")
+
     args = parser.parse_args(argv)
     if args.command == "doctor":
         return run_doctor(args.probe)
@@ -401,6 +415,14 @@ def main(argv: list[str] | None = None) -> int:
             f"a_share_daily=completed usable_symbols={result.usable_symbols} "
             f"brief={result.brief_path} receipt={result.receipt_path}"
         )
+        return 0
+    if args.command == "source-plan":
+        try:
+            plan = build_source_plan(args.catalog, args.request, args.out)
+        except (SourceCatalogError, OSError) as error:
+            print(f"source_plan=fail reason={error}", file=sys.stderr)
+            return 2
+        print(f"source_plan=pass selected_sources={len(plan['selected_sources'])} artifact={args.out}")
         return 0
     parser.error(f"unknown command: {args.command}")
     return 2
