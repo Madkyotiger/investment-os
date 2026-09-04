@@ -118,6 +118,14 @@ def test_catalog_rejects_mismatched_x_identity():
         validate_source_catalog(invalid)
 
 
+def test_active_channel_requires_verified_status():
+    catalog = load_source_catalog(CATALOG_PATH)
+    broken = copy.deepcopy(catalog)
+    broken["sources"][0]["channels"][0]["status"] = "unchecked_active"
+    with pytest.raises(SourceCatalogError, match="active channel status must be verified"):
+        validate_source_catalog(broken)
+
+
 def test_source_plan_cli_writes_auditable_plan(tmp_path, capsys):
     out = tmp_path / "source-plan.json"
 

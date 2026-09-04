@@ -154,6 +154,13 @@ def validate_source_catalog(catalog: object) -> dict[str, Any]:
             capture = channel.get("capture")
             if capture not in ALLOWED_CAPTURE_MODES:
                 failures.append(f"{channel_label}.capture is invalid")
+            if (
+                capture != "not_configured_do_not_claim"
+                and access_state != "not_available"
+                and isinstance(status, str)
+                and not status.startswith("verified_")
+            ):
+                failures.append(f"{channel_label}.active channel status must be verified")
             url = channel.get("url")
             query = channel.get("query")
             if url is not None:
@@ -299,6 +306,7 @@ def _available_channels(source: dict[str, Any], allowed_access: set[str], limit:
         if channel["access_state"] in allowed_access
         and channel["capture"] != "not_configured_do_not_claim"
         and channel["access_state"] != "not_available"
+        and channel["status"].startswith("verified_")
     ]
     channels.sort(key=lambda item: (item["priority"], CHANNEL_TYPE_ORDER[item["type"]], item.get("url", "")))
     return channels[:limit]
