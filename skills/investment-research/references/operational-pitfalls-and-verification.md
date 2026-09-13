@@ -68,6 +68,18 @@
 
 42. **A HOLD is not a dead end and not an invitation to search forever.** Freeze the validated Model Gate, identify only the variables that can reverse the verdict, and move them into an event-driven Falsifier Dashboard. A technically successful scheduled run can still be wrong if its prompt, audience, or product seat predates the latest accepted contract; inspect live scheduler state during whole-system handoff and route pause/update/allow-run to the human decision owner. See `references/model-gate-hold-to-falsifier-dashboard.md`.
 
+## On-demand CFTC COT corroboration
+
+Use COT only when a concrete research question asks whether futures positioning confirms or diverges from an independently evidenced physical-market or macro condition. It is not a default subscription, recurring scan requirement or reason to publish unchanged background.
+
+Start from official [CFTC dataset metadata](https://publicreporting.cftc.gov/api/views/6dca-aqww.json), [Legacy Futures Only API](https://publicreporting.cftc.gov/resource/6dca-aqww.json), [methodology](https://www.cftc.gov/MarketReports/CommitmentsofTraders/AbouttheCOTReports/index.htm) and [release schedule](https://www.cftc.gov/MarketReports/CommitmentsofTraders/ReleaseSchedule/index.htm). This endpoint is one report family, not universal coverage or a blanket data-redistribution license.
+
+- Resolve report family, stable contract code, units and trader taxonomy from metadata. Keep futures-only separate from futures-and-options-combined. Legacy non-commercial is not the same category as disaggregated managed money.
+- Fetch a bounded, explicit interval; verify declared/collected counts, pagination, duplicate dates, missing weeks, units and long/short open-interest balances before computing net positions or net/open-interest shares.
+- Keep observation date, scheduled/actual publication and capture time distinct. Reports usually publish Friday for Tuesday observations; check holiday/delay schedules. A schedule is not an actual upload receipt. Current historical API values may include revisions and cannot certify an old release vintage without its snapshot.
+- Positions do not prove trader motives, price causality, production or exports. Do not convert contract units into physical barrels/day. A short window cannot establish extreme historical crowding or investment performance.
+- Admit an item to the reader surface only if it changes a question, interpretation or falsifier. Otherwise retain an on-demand source sample without adding cron, scores, trading instructions or a new adapter. Errors/stale/missing observations remain gaps, not zero net positions.
+
 ## Verification Checklist
 
 - [ ] Objective is information/analyze/suggest, not decision/execution.

@@ -23,7 +23,7 @@ def test_investment_research_skill_package_is_complete() -> None:
     text = SKILL_FILE.read_text(encoding="utf-8")
     metadata = _frontmatter(text)
     assert metadata["name"] == "investment-research"
-    assert metadata["version"] == "2.3.1"
+    assert metadata["version"] == "2.3.3"
 
     linked_paths = set(
         re.findall(r"`((?:references|templates)/[^`]+\.md)`", text)
@@ -67,3 +67,46 @@ def test_public_skill_has_no_private_runtime_owner_assumptions() -> None:
         text = path.read_text(encoding="utf-8")
         leaked = sorted(token for token in forbidden if token in text)
         assert not leaked, f"private runtime assumptions in {path}: {leaked}"
+
+
+def test_absorbed_research_procedures_have_positive_and_negative_routes() -> None:
+    """Documentation contracts, not proof of new collector/replay behavior."""
+    main = SKILL_FILE.read_text(encoding="utf-8")
+    for trigger in (
+        "Before historical reconstruction, load",
+        "before filing retrieval/claim extraction, load",
+        "for an explicit COT positioning question, load",
+        "not automatic collectors or new execution authority",
+    ):
+        assert trigger in main
+
+    cases = {
+        "judgment-kernel-and-historical-replay.md": (
+            "latest applicable revision published by the cutoff",
+            "Different institutions' estimates coexist",
+            "Capture/verification timestamps do not prove lesson-creation time",
+            "observation_end",
+            "vintage_dates",
+            "live freshness classification is not a historical selector",
+        ),
+        "source-bounded-filing-claim-cards.md": (
+            "Complete the requested scope",
+            "Incomplete responses remain `partial`",
+            "never forward credentials to an arbitrary URL",
+            "Cache by source, document version and requested scope",
+            "Metadata locates a file; it does not prove the body was read",
+            "not a claim that a connector or cache has been implemented",
+        ),
+        "operational-pitfalls-and-verification.md": (
+            "## On-demand CFTC COT corroboration",
+            "not a default subscription",
+            "A schedule is not an actual upload receipt",
+            "Legacy non-commercial is not the same category",
+            "not zero net positions",
+            "Do not convert contract units into physical barrels/day",
+        ),
+    }
+    for filename, fragments in cases.items():
+        text = (SKILL_DIR / "references" / filename).read_text(encoding="utf-8")
+        for fragment in fragments:
+            assert fragment in text, (filename, fragment)

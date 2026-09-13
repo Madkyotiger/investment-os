@@ -1,5 +1,17 @@
 # Source-Bounded Filing / Earnings Claim Cards
 
+## Filing retrieval before claim extraction
+
+For a filing or earnings question, separate file discovery from body reading:
+
+1. Resolve issuer/CIK, form, fiscal period, actual filing/publication time, accession number or equivalent document ID, and original URL. Include 20-F/6-K and amendments where applicable. Metadata locates a file; it does not prove the body was read.
+2. Read the sections, tables and footnotes the question requires. Preserve enough context to interpret definitions, segment scope and contractual/accounting limits. Label full, section or excerpt access honestly; expand only when a material gap requires it.
+3. Complete the requested scope before treating a cache entry as complete. For paginated sources verify termination, declared totals, deduplication and missing pages. Incomplete responses remain `partial`; raw failure receipts may be retained separately. Restrict next-page URLs to authorized origins, detect loops, and never forward credentials to an arbitrary URL.
+4. Cache by source, document version and requested scope, with URL, capture time and hash—not issuer name alone. Preserve amendments separately. A stable original filing does not imply an immutable vendor parse. For historical version selection use `references/judgment-kernel-and-historical-replay.md`.
+5. Reuse the existing SourceAnchor/Claim Record: original quote/table, section/page/locator, period, currency/unit and deterministic calculation inputs. A vendor API URL or tool log is retrieval provenance, not a source-body claim anchor; wrappers of the same disclosure are not independent corroboration.
+
+Acceptance: metadata alone cannot support a body claim; a missing page cannot become a complete cache; amendments preserve old versions; each promoted conclusion resolves to actual source text. This is a research procedure and implementation acceptance contract, not a claim that a connector or cache has been implemented. Learn mechanisms without copying unlicensed code, subscribing to a vendor or replacing the existing evidence layer.
+
 When a user asks for source-anchored atomic claims from a bounded issuer earnings corpus or annual filing:
 
 1. Lock the allowed local source paths and preserve the normalized source path on every card; do not supplement with search snippets, web summaries, prior quarters, or inferred market data.

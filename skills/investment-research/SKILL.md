@@ -1,7 +1,7 @@
 ---
 name: investment-research
 description: "Routes and executes evidence-first investment research across quick market questions, Daily Scan, cross-market wrap, A-share institutional observation, triggered deep reads, named issuer studies, source audits, and reusable research systems. Use for source-backed market research, watchlists, filings, data pipelines, evidence ledgers, longitudinal analysis, portfolio-risk review, or reader briefs. Do NOT use for buy/sell/hold calls, position sizing, target prices, brokerage execution, return promises, or regulated investment advice."
-version: 2.3.1
+version: 2.3.3
 author: Hermes Agent
 license: MIT
 compatibility: hermes
@@ -160,6 +160,8 @@ A source audit should retain title, publisher, timestamp, original URL, readable
 - **Other markets:** add dedicated exchange/regulator/issuer routes as coverage requires. Their absence must be reported as a gap, never as evidence that the market is out of scope.
 
 For A-share operations: route stock, ETF, and index explicitly; never send a stock to an ETF endpoint. Use a bounded Eastmoney → Sina → Tencent stock-history fallback and retain the actual source. Stale data is not usable. `no_event` is not `source_error`. Institutional-flow language is inference, not an observed actor decision. Missing or invalid LHB amounts cannot become net-buy/net-sell direction. Beijing margin data is `not_applicable` when the required exchange route does not exist; do not substitute SSE/SZSE.
+
+Before historical reconstruction, load `references/judgment-kernel-and-historical-replay.md`; before filing retrieval/claim extraction, load `references/source-bounded-filing-claim-cards.md`; for an explicit COT positioning question, load the on-demand CFTC section in `references/operational-pitfalls-and-verification.md`. These are research procedures, not automatic collectors or new execution authority.
 
 ## Core Workflow
 

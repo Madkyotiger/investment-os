@@ -64,6 +64,20 @@ Gold Samples must be reproducible later:
 
 Without this, a historical sample can silently become stale, inherit current dates, or leak future information.
 
+## Point-in-time evidence and memory
+
+Use this contract when reviewing an old judgment or reconstructing what was knowable at a cutoff; live freshness classification is not a historical selector.
+
+- Keep **used in the original** separate from **publicly knowable then**. Freeze the original brief and source packet. A later read of an already-public document can supplement a reconstruction, not retroactively become evidence the original run used.
+- Separate publication time, observation period, capture time and outcome time. Later-published old-period data can confirm history but cannot enter a pre-publication decision or count as a subsequent prediction hit.
+- Gate retrospective memory by when the lesson or outcome became known (`resolved_at` or equivalent), not the old decision date. Capture/verification timestamps do not prove lesson-creation time. Missing knowability evidence stays unknown.
+- Establish same source, object, period, unit and denominator before treating records as revisions. Select the latest applicable revision published by the cutoff; preserve the frozen original. Different institutions' estimates coexist and must not overwrite one another as revisions.
+- Withhold live-only company profiles without historical vintage. Date-only or timezone-uncertain publication times may be used only when their entire supported time range is before the cutoff; otherwise withhold the affected claim. Do not invent precise timestamps or impose a universal synthetic timezone.
+- FRED `observation_end` limits the observation period, not the revision vintage. Historical reconstruction additionally requires appropriate `realtime_start` / `realtime_end` / `vintage_dates` and a verified source version.
+- Keep supplied-input tests, source-anchored fixtures, synthetic cases and real historical outcomes separately labelled. A prototype or live-freshness test does not prove an integrated replay capability; controlling tool inputs does not eliminate a general model's prior knowledge.
+
+Focused acceptance pairs: later-published old-period data and later-resolved memory are excluded before their knowability boundary; a valid revision becomes eligible after publication while the original stays frozen; independent estimates remain visible together; metadata/capture time never substitutes for publication/body proof. Do not add a historical engine merely to satisfy a documentation rule.
+
 ## Post-repair audit discipline
 
 Separate logic audit from integration verification:
