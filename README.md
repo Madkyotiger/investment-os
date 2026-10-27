@@ -105,7 +105,7 @@ For a repository checkout, follow [`AGENTS.md`](AGENTS.md) and [`docs/AGENT_INST
 
 ## Agent skill
 
-The portable skill lives at [`skills/investment-research/`](skills/investment-research/). Copy or link the complete directory into your agent's skill search path, then invoke `investment-research`. The skill adds research discipline and source gates; it does not add credentials, live-source access, scheduling, messaging, or trade execution.
+The portable skill lives at [`skills/investment-research/`](skills/investment-research). Copy or link the complete directory into your agent's skill search path, then invoke `investment-research`. The skill adds research discipline and source gates; it does not add credentials, live-source access, scheduling, messaging, or trade execution.
 
 ## Optional live market check
 
