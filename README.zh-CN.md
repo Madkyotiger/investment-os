@@ -103,7 +103,7 @@ uvx --from git+https://github.com/Madkyotiger/investment-os.git \
 
 ## Agent Skill
 
-可移植 Skill 位于 [`skills/investment-research/`](skills/investment-research/)。把整个目录复制或链接到 Agent 的 Skill 搜索路径，再调用 `investment-research`。它补的是研究纪律和来源门槛，不会替你配置凭证、实时数据、定时任务、消息推送或交易执行。
+可移植 Skill 位于 [`skills/investment-research/`](skills/investment-research)。把整个目录复制或链接到 Agent 的 Skill 搜索路径，再调用 `investment-research`。它补的是研究纪律和来源门槛，不会替你配置凭证、实时数据、定时任务、消息推送或交易执行。
 
 ## 可选实时行情检查
 
