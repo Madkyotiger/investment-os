@@ -14,6 +14,7 @@ from investment_os.hard_source_collectors import (
     collect_fred_macro_candidates,
     collect_sec_recent_filing_candidates,
 )
+from investment_os.macro_sources import load_macro_series
 
 
 WATCHLIST = Path("configs/watchlist.sample.yaml")
@@ -59,6 +60,7 @@ def test_offline_daily_run_is_deterministic_and_second_run_is_quiet(tmp_path: Pa
     assert second_manifest["promoted_items"] == 0
     assert second_state["promoted_item_ids"] == []
     assert "没有足够强的变化值得推送" in second.brief_path.read_text(encoding="utf-8")
+    assert "若若" not in first.brief_path.read_text(encoding="utf-8")
 
 
 def test_offline_runs_from_fresh_state_have_identical_artifacts(tmp_path: Path):
@@ -195,6 +197,37 @@ def test_live_material_macro_promotes_while_sec_retrieval_stays_blocked(monkeypa
     assert sec.title not in first.brief_path.read_text(encoding="utf-8")
     assert second.status == "quiet"
     assert second_manifest["promoted_items"] == 0
+
+
+@pytest.mark.parametrize("series_id", sorted(load_macro_series(Path("configs/macro_series.yaml"))))
+def test_live_material_release_of_each_configured_series_reaches_the_brief(
+    monkeypatch, tmp_path: Path, series_id: str
+):
+    generated_at = datetime.now(timezone.utc)
+    source_date = generated_at.date().isoformat()
+    previous_date = (generated_at.date() - timedelta(days=1)).isoformat()
+    monkeypatch.setattr(
+        "investment_os.hard_source_collectors._fred_series_text",
+        lambda requested: f"observation_date,{requested}\n{previous_date},159128.0\n{source_date},159293.0\n",
+    )
+    release = next(
+        candidate
+        for candidate in collect_fred_macro_candidates(generated_at, state_path=tmp_path / "macro-state.json")
+        if candidate.item_id.endswith(f":{series_id}")
+    )
+    monkeypatch.setattr(
+        "investment_os.daily_runner.collect_hard_source_candidates",
+        lambda *_args, **_kwargs: [release],
+    )
+    monkeypatch.setattr("investment_os.daily_runner.get_last_source_errors", lambda: [])
+
+    result = run_daily(WATCHLIST, PROFILE, tmp_path / "state.json", tmp_path / "live", strict=True)
+    brief = result.brief_path.read_text(encoding="utf-8")
+
+    assert result.status == "completed"
+    assert f"FRED {series_id}" in brief
+    assert "159,293" in brief
+    assert "e+" not in brief
 
 
 def test_live_strict_fails_only_when_every_usable_source_fails(monkeypatch, tmp_path: Path):

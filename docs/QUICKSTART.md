@@ -5,7 +5,7 @@ This route exercises the exact daily artifact contract entirely offline. It uses
 ## Install and verify
 
 ```bash
-uv sync --extra dev
+uv sync --frozen --extra dev
 uv run investment-os doctor
 uv run investment-os demo --out .local/demo-output
 ```

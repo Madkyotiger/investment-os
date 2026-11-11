@@ -451,6 +451,10 @@ def run_daily(
 ) -> DailyRunResult:
     """Collect, validate, update durable topic state, and write one completed local run."""
     _validate_inputs(watchlist_path, profile_path)
+    try:
+        profile = load_profile(profile_path)
+    except KeyError as error:
+        raise DailyRunError(f"profile file must define profiles.founder_operator: {profile_path}") from error
     state_path.parent.mkdir(parents=True, exist_ok=True)
     _recover_pending_state(state_path)
     out_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -491,7 +495,6 @@ def run_daily(
             generated_at=generated_at,
         )
 
-        profile = load_profile(profile_path)
         items = build_cxo_brief_items(candidates, profile, max_items=5, topic_changes=changes)
         status = "completed" if items else "quiet"
         brief = render_cxo_brief(items, profile, generated_at=generated_at, topic_changes=changes)

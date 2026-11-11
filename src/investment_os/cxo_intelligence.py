@@ -14,6 +14,7 @@ import yaml
 
 from .pipeline import FORBIDDEN_DECISION_WORDS
 from .judgment_kernel import evidence_fingerprint, is_promotable
+from .macro_sources import load_macro_series
 from .source_universe_intake import SourceCandidate, rank_source_candidates
 from .topic_state import TopicChange, parse_generated_at
 from .us_china_pilot import scan_boundary, scan_external_note_quality
@@ -228,17 +229,6 @@ def render_coverage_receipt(
     return "覆盖回执：" + "；".join([clause("US", "美国"), clause("China", "中国")]) + "。"
 
 
-def _cn_lane(lane: str) -> str:
-    return {
-        "macro_regime": "宏观阀门",
-        "company_events": "公司事件",
-        "sector_theme_discovery": "产业主题",
-        "market_action": "市场动作",
-        "expert_and_media_signals": "专家/媒体线索",
-        "portfolio_watchlist": "观察名单",
-    }.get(lane, lane)
-
-
 TITLE_REPLACEMENTS = {
     "China market breadth check is available but cross-source reconciliation is incomplete": "中国市场广度已有单源快照，但二源核验还没完成",
     "Memory/passives look like the next AI infrastructure bottleneck to verify": "内存和被动件正在变成 AI 基建下一层瓶颈，需要尽快核验",
@@ -364,6 +354,17 @@ def _plain_summary(candidate: SourceCandidate) -> str:
     return _zh(candidate.summary)
 
 
+def _clip_at_clause(text: str, limit: int = 180) -> str:
+    """Shorten an over-long summary at a clause boundary instead of in the middle of a number."""
+    if len(text) <= limit:
+        return text
+    clipped = text[:limit]
+    boundary = max(clipped.rfind(mark) for mark in ("；", ";", "。"))
+    if boundary >= limit // 2:
+        clipped = clipped[:boundary]
+    return clipped.rstrip("；;。，, ") + "…"
+
+
 def _clean_cn_punctuation(text: str) -> str:
     return (
         text.replace(".。", "。")
@@ -410,15 +411,17 @@ def render_cxo_brief(
     for item in items[:5]:
         cand = item.candidate
         title = _zh(cand.title).rstrip("。.")
-        summary = _plain_summary(cand)[:180].rstrip("。.")
+        summary = _clip_at_clause(_plain_summary(cand)).rstrip("。.")
         question = _zh(cand.research_question).rstrip("。.")
         counter = _zh(cand.counter_explanation).rstrip("。.")
         next_source = _zh(cand.next_primary_source).rstrip("。.")
         kill_signal = _zh(cand.kill_signal).rstrip("。.")
         if kill_signal.startswith("如果"):
             kill_signal = kill_signal[2:]
+        elif kill_signal.startswith("若"):
+            kill_signal = kill_signal[1:]
 
-        lines.extend([f"## {title}", "", _clean_cn_punctuation(f"{summary}。")])
+        lines.extend([f"## {title}", "", _clean_cn_punctuation(summary if summary.endswith("…") else f"{summary}。")])
         second_paragraph: list[str] = []
         if question:
             second_paragraph.append(question if question.endswith(("？", "！")) else f"{question}。")
@@ -443,6 +446,15 @@ def render_cxo_brief(
     lines.append(f"资料截至：{local_date}。只用于个人投资研究与风险判断，不是交易建议。")
     lines.append("")
     return "\n".join(lines)
+
+
+def _configured_series_ids() -> set[str]:
+    # The macro collector prints these IDs in its own titles (FEDFUNDS, CPIAUCSL, PAYEMS ...);
+    # they are source identifiers, not untranslated prose. An unreadable config exempts nothing.
+    try:
+        return {series_id.lower() for series_id in load_macro_series()}
+    except (OSError, KeyError, TypeError, ValueError):
+        return set()
 
 
 def scan_cxo_brief_quality(text: str) -> dict[str, int]:
@@ -470,10 +482,13 @@ def scan_cxo_brief_quality(text: str) -> dict[str, int]:
         "xlk", "yoy", "qoq",
     }
     english_tokens = re.findall(r"\b[A-Za-z][A-Za-z-]{2,}\b", text_without_links)
+    series_ids = _configured_series_ids()
     result["mixed_english:prose_tokens"] = sum(
         1
         for token in english_tokens
-        if token.lower() not in allowed_english and not (token.isupper() and 1 <= len(token) <= 5)
+        if token.lower() not in allowed_english
+        and token.lower() not in series_ids
+        and not (token.isupper() and 1 <= len(token) <= 5)
     )
     ai_markers = [
         "为什么看：",

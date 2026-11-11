@@ -142,9 +142,14 @@ def _safe_sec_recent() -> dict:
     return {}
 
 
-def collect_sec_watchlist_candidates(watchlist_groups: dict[str, list[str]], generated_at: datetime) -> list[HardSourceCandidate]:
+def collect_sec_watchlist_candidates(
+    watchlist_groups: dict[str, list[str]],
+    generated_at: datetime,
+    sec_map: dict | None = None,
+) -> list[HardSourceCandidate]:
     symbols = _flatten_watchlist(watchlist_groups)
-    sec_map = _safe_sec_recent()
+    if sec_map is None:
+        sec_map = _safe_sec_recent()
     candidates: list[HardSourceCandidate] = []
     for row in sec_map.values():
         ticker = str(row.get("ticker", "")).upper()
@@ -227,6 +232,7 @@ def collect_sec_recent_filing_candidates(
     generated_at: datetime,
     max_symbols: int = 8,
     symbol_metadata: dict[str, dict[str, object]] | None = None,
+    sec_map: dict | None = None,
 ) -> list[HardSourceCandidate]:
     if symbol_metadata:
         symbols = sorted(
@@ -242,7 +248,8 @@ def collect_sec_recent_filing_candidates(
                 if symbol and symbol.replace("-", "").isalpha()
             }
         )
-    sec_map = _safe_sec_recent()
+    if sec_map is None:
+        sec_map = _safe_sec_recent()
     cik_by_ticker = {str(row.get("ticker", "")).upper(): str(row.get("cik_str", "")) for row in sec_map.values()}
     candidates: list[HardSourceCandidate] = []
     for ticker in symbols[:max_symbols]:
@@ -376,6 +383,12 @@ def _fred_series_text(series_id: str) -> str:
     return _http_text(f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}", timeout=12)
 
 
+def _plain_number(value: float, *, signed: bool = False) -> str:
+    """Up to three decimals with thousands separators; never scientific notation."""
+    text = f"{value:+,.3f}" if signed else f"{value:,.3f}"
+    return text.rstrip("0").rstrip(".")
+
+
 def _macro_candidate(
     observation: MacroObservation,
     generated_at: datetime,
@@ -397,10 +410,10 @@ def _macro_candidate(
     )
     change_text = ""
     if observation.change is not None:
-        change_text = f"；较前次发布观测变化 {observation.change:+.4g} {display_unit}"
+        change_text = f"；较前次发布观测变化 {_plain_number(observation.change, signed=True)} {display_unit}"
     revision_text = ""
     if observation.revision is not None:
-        revision_text = f"；检测到同日期数值修订 {observation.revision:+.4g} {display_unit}"
+        revision_text = f"；检测到同日期数值修订 {_plain_number(observation.revision, signed=True)} {display_unit}"
     material_change = any(
         value is not None and abs(value) + 1e-12 >= material_change_threshold
         for value in (observation.change, observation.revision)
@@ -411,7 +424,7 @@ def _macro_candidate(
         title=f"FRED {observation.series_id} 官方观测已更新，待结合相邻数据核验",
         summary=(
             f"FRED {observation.series_id} 在 {observation.observation_date} 的官方观测值为 "
-            f"{observation.level:.4g} {display_unit}{change_text}{revision_text}。"
+            f"{_plain_number(observation.level)} {display_unit}{change_text}{revision_text}。"
         ),
         source="FRED fredgraph.csv",
         source_type="primary_macro_fred_live",
@@ -932,12 +945,14 @@ def collect_hard_source_candidates(
     groups = _load_watchlist(watchlist_path)
     symbol_metadata = _load_symbol_metadata(watchlist_path)
     candidates: list[HardSourceCandidate] = []
-    candidates.extend(collect_sec_watchlist_candidates(groups, generated_at))
+    sec_map = _safe_sec_recent()  # one ticker-map download serves both SEC collectors
+    candidates.extend(collect_sec_watchlist_candidates(groups, generated_at, sec_map=sec_map))
     candidates.extend(
         collect_sec_recent_filing_candidates(
             groups,
             generated_at,
             symbol_metadata=symbol_metadata,
+            sec_map=sec_map,
         )
     )
     candidates.extend(collect_macro_hard_candidates(generated_at))
