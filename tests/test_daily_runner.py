@@ -599,3 +599,8 @@ def test_watchlist_without_groups_is_rejected_before_any_collection(tmp_path: Pa
         run_daily(flat, PROFILE, tmp_path / "state.json", tmp_path / "out")
     assert not (tmp_path / "out").exists()
 
+    broken = tmp_path / "broken.yaml"
+    broken.write_text("groups: [unclosed\n", encoding="utf-8")
+    with pytest.raises(DailyRunError, match="not a readable groups mapping"):
+        run_daily(broken, PROFILE, tmp_path / "state.json", tmp_path / "out")
+
