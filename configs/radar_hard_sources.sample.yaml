@@ -1,0 +1,42 @@
+version: 1
+# Official machine-readable sources fetched by `investment-os radar collect`.
+# The list comes from what real daily runs kept citing second-hand or recording
+# as gaps. Add an entry when the collection report shows a recurring gap that a
+# plain request can fill; remove one that stops returning the requested document.
+fred:
+  history_days: 120
+  series:
+    DGS2: US Treasury 2-year constant maturity yield, percent
+    DGS10: US Treasury 10-year constant maturity yield, percent
+    DGS30: US Treasury 30-year constant maturity yield, percent
+    DFF: Effective federal funds rate, percent
+    CPIAUCSL: US CPI all urban consumers, index
+    CPILFESL: US CPI less food and energy, index
+    PPIFIS: US PPI final demand, index
+    PCEPI: US PCE price index
+    PAYEMS: US nonfarm payrolls, thousands
+    UNRATE: US unemployment rate, percent
+    ICSA: US initial jobless claims
+    OPHNFB: US nonfarm business labor productivity, index
+    DCOILBRENTEU: Brent crude spot, USD per barrel
+    DCOILWTICO: WTI crude spot, USD per barrel
+treasury_auctions:
+  days: 7
+shfe_daily:
+  products:
+    cu: Copper
+    al: Aluminium
+    zn: Zinc
+    ni: Nickel
+    sn: Tin
+    au: Gold
+    ag: Silver
+pages:
+  - id: noaa-enso-discussion
+    url: https://www.cpc.ncep.noaa.gov/products/analysis_monitoring/enso_advisory/ensodisc.shtml
+    title_contains: ENSO Diagnostic Discussion
+    excerpt_after: "Synopsis:"
+sec:
+  forms: [8-K, 10-Q, 10-K, 6-K, 20-F, S-1, S-1/A]
+  lookback_days: 4
+  tickers: []

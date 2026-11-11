@@ -1,7 +1,7 @@
 ---
 name: investment-research
 description: "Routes and executes evidence-first investment research across quick market questions, Daily Scan, cross-market wrap, A-share institutional observation, triggered deep reads, named issuer studies, source audits, and reusable research systems. Use for source-backed market research, watchlists, filings, data pipelines, evidence ledgers, longitudinal analysis, portfolio-risk review, or reader briefs. Do NOT use for buy/sell/hold calls, position sizing, target prices, brokerage execution, return promises, or regulated investment advice."
-version: 2.3.4
+version: 2.3.5
 author: Hermes Agent
 license: MIT
 compatibility: hermes
@@ -180,9 +180,12 @@ For building or adopting a system, load `references/system-build-and-adoption-ru
 
 Load only the branch the selected demand needs. Every listed asset is part of the retained capability.
 
+An installed copy may add `references/local-deployment.md` for routes that exist only in that deployment (private modules, sibling skills, promotion gates). Read it once when present. The public package does not ship it, and it must not change any rule in this file.
+
 ### Reader products and output
 
 - Product A/B/on-demand selection → `references/daily-scan-vs-triggered-rolling-deep-read.md`
+- Scheduled agent-researched daily brief (history and open questions, first-hand official captures, packet validation, collection report) → `docs/RADAR.md` in the investment-os repository; commands under `investment-os radar --help`
 - Real Product B execution → `references/triggered-rolling-deep-read-runbook.md`
 - Daily versus named deep pack → `references/daily-scan-vs-stock-deep-pack.md`
 - Reader style, source universe, two-tier output → `references/investment-output-style-and-source-universe.md`

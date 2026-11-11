@@ -117,6 +117,10 @@ class HttpClient:
                 raise last_error
         raise last_error or HttpRequestError("network_error", "request failed", url)
 
+    def get_bytes(self, url: str, *, expected_content_types: tuple[str, ...] = (), user_agent: str | None = None) -> bytes:
+        """Raw response body, for callers that save exactly what the source returned."""
+        return self._request(url, expected_content_types, user_agent)
+
     def get_json(self, url: str, *, user_agent: str | None = None) -> dict | list:
         body = self._request(url, ("application/json", "text/json"), user_agent)
         try:

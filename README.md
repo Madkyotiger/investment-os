@@ -16,6 +16,7 @@ Investment OS is multi-market by design. The existing `daily` watchlist path con
 - Research questions, counter-explanations, next-source prompts, and kill signals.
 - A brief renderer that shows every change that clears the evidence gate, with no fixed item count, and stays quiet when nothing did.
 - An auditable `investment-os daily` runner with explicit watchlist/profile/state paths, source receipts, completed-run manifests, structured failures, and deterministic offline fixtures.
+- The daily radar (`investment-os radar`): the path a real daily brief runs on. An agent researches and writes; the program supplies the history, verifies every cited source, tracks open questions, stores the run, and reports what the runs collected. See [`docs/RADAR.md`](docs/RADAR.md).
 - A keyless `investment-os a-share-daily` path for A-share stocks, with stock/ETF/index routing, price-provider fallback, institutional-holding disclosures, LHB events, block trades, exchange margin data, and a reader-first brief.
 - An on-demand public expert/media catalog and `source-plan` resolver that selects a minimal capture plan from explicit topics, geographies, viewpoint roles, access permissions, and limits.
 - Boundary tests that reject trade instructions and internal process leakage from reader output.
@@ -60,6 +61,10 @@ uv run investment-os daily \
 ```
 
 Run it again with the same `--state` and a different `--out`: the second completed run returns `daily_run=quiet` and does not re-promote unchanged evidence. In live mode a market move is material when it exceeds twice that symbol's own trailing 60-day daily volatility, and a daily bar is used only after its exchange has closed. `--strict` in live mode fails only when no usable fresh live source succeeds; blocked source targets and stale last-known-good observations do not count as current successes. FRED freshness and per-series material-change thresholds, plus the five-calendar-day market snapshot threshold, are explicit in `configs/macro_series.yaml`; the same config is bundled in the wheel for runs outside a checkout. See [`docs/QUICKSTART.md`](docs/QUICKSTART.md).
+
+## Daily radar
+
+`investment-os radar preflight | collect | evaluate | store | collection-report` is the agent-researched path: the agent finds and reads sources and writes the brief; the program fetches the official machine-readable sources first-hand (rates and macro series, Treasury auctions, exchange settlement prices, company filings) and checks the evidence packet the agent brings back. Nothing is published when coverage is incomplete and nothing qualifies, every qualifying item is kept, and open questions stay open until evidence closes them. `collection-report` summarizes what recent real runs could and could not collect; recurring gaps in that report are what drive new collectors and source routes in this repository. Commands, the packet format and the rules are in [`docs/RADAR.md`](docs/RADAR.md).
 
 ## On-demand expert and media source plan
 
@@ -191,7 +196,7 @@ uv run python scripts/public_release_guard.py
 
 ## Project status
 
-Version `0.2.2` repairs the live `daily` path, which stopped without output whenever a monthly macro release reached the brief; shows every qualifying change instead of the first five; judges market moves against each symbol's own volatility on closed sessions; and retires the early pilot modules with their `global-research` dependency profile. It is ready for installation and human-reviewed evaluation, not unattended production. Scheduling and downstream distribution remain outside this repository.
+Version `0.3.0` brings the daily radar into the package: the code a real agent-researched daily brief runs on, first-hand captures of the official sources those runs kept reading second-hand, and a report of what the runs could and could not collect. Version `0.2.2` repairs the live `daily` path, which stopped without output whenever a monthly macro release reached the brief; shows every qualifying change instead of the first five; judges market moves against each symbol's own volatility on closed sessions; and retires the early pilot modules with their `global-research` dependency profile. It is ready for installation and human-reviewed evaluation, not unattended production. Scheduling and downstream distribution remain outside this repository.
 
 The repository does not depend on or vendor FinceptTerminal. No FinceptTerminal code is copied here; external systems may be used only as behavioral comparison points during evaluation.
 

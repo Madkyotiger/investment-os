@@ -1,0 +1,114 @@
+version: 2
+reader_id: reader
+objective: "每日财经资讯：面向一般财经读者，整合全球宏观、地缘与供给、能源、气候与粮食、金属、AI及其他产业、公司财报和市场解读；核验经济传导、机会、风险及反证，不绑定个人身份或私人财务。"
+require_opportunity_context: true
+silent_no_push: true
+decision_horizon: "days to quarters"
+max_age_hours: 72
+minimum_source_authority: 4
+minimum_impact_score: 4
+allowed_evidence_status:
+  - primary_read
+  - verified_data
+  - cross_checked
+  - secondary_confirmed
+required_checks:
+  macro_upstream:
+    - policy_rates_liquidity
+    - inflation_growth_labor
+    - energy_geopolitics
+  ai_upstream:
+    - ai_demand_capex
+    - semiconductors_network_memory
+    - power_grid_cooling_datacenters
+  company_events:
+    - leader_earnings_guidance_material_events
+  market_interpretation:
+    - financial_media_expert_views
+topic_keywords:
+  macro_upstream:
+    - rates
+    - inflation
+    - liquidity
+    - labor
+    - growth
+    - usd
+    - energy
+    - oil
+    - geopolitics
+    - climate
+    - food
+    - agriculture
+    - grain
+    - industrial_metals
+    - precious_metals
+    - gold
+    - supply_chain
+    - sanctions
+    - fx
+    - credit
+  ai_upstream:
+    - ai_capex
+    - accelerator
+    - semiconductor
+    - memory
+    - networking
+    - power
+    - grid
+    - cooling
+    - datacenter
+    - data_center
+  company_events:
+    - earnings
+    - guidance
+    - company_event
+    - orders
+    - capacity
+    - competition
+    - valuation
+  market_interpretation:
+    - consensus
+    - valuation
+    - expectations
+    - counterview
+    - sector_opportunity
+decision_dimensions:
+  - earnings
+  - cash_flow
+  - valuation
+  - cycle
+  - financing_cost
+  - supply_constraint
+  - risk
+allowed_action_types:
+  - recheck_assumption
+  - reprioritize_research
+  - verify_exposure
+  - monitor_trigger
+advisory_boundary: "研究动作可以改变核验顺序、风险关注和假设；不得给出买卖、持有、仓位、目标价或交易执行建议。"
+
+research_sources:
+  expert_watchlist_file: configs/public_source_catalog.json
+  financial_media: [Reuters, Bloomberg, Financial Times, Wall Street Journal, 财新, The Economist, 香港经济日报, 信报, South China Morning Post]
+  macro_resource_experts:
+    event_relevant_candidates: [Luke Gromen, Alasdair Macleod, Rick Rule, Grant Williams, Simon Hunt, J. Ted Oakley]
+    explicit_question_only: [Martin Armstrong, Andy Schectman, J. Michael Oliver]
+    channel_policy: "公开原文、X长线程、newsletter及有可读逐字稿/字幕的完整访谈；身份和原始出处须逐次核对，名单不证明权限或持续监控。专家仅作观点与发现，事实回原始数据。"
+  coverage_extensions:
+    energy_geopolitics: [physical_energy_flows, geopolitics_sanctions_trade, climate_food_agriculture, industrial_and_precious_metals]
+    rule: "八个既有核验键保持兼容；上述分项必须分别广泛发现并在本轮候选取舍中记录证据或缺口，不得用单一能源来源冒称全部覆盖。"
+  reader_surface:
+    title: 每日财经资讯
+    audience: general_financial_reader
+    personal_context: prohibited
+    identity_labels: prohibited
+  sell_side_public_views: [J.P. Morgan, Goldman Sachs, Morgan Stanley]
+  leader_company_pool:
+    compute_network: [NVIDIA, AMD, Broadcom, Qualcomm, Marvell, Arista, Ciena]
+    manufacturing_equipment: [TSMC, Samsung Electronics, Intel, ASML, Applied Materials, Lam Research, KLA, SMIC, NAURA]
+    memory_packaging: [SK hynix, Micron, ASE, Amkor]
+    power_datacenters: [Vertiv, Schneider Electric, Eaton, Delta Electronics, Flex, Equinix, Digital Realty]
+    demand_validation: [Microsoft, Alphabet, Amazon, Meta, Oracle, Alibaba, Tencent]
+  selection_rule: "这是发现池而非持仓/推荐清单。优先查新增财报、指引、订单和重要动态；不要求每天逐家公司读全文，也不排除池外实质机会。"
+  access_rule: "专家意见先归因；回到财报/公告/可靠数据核验。付费全文无权限时记录缺口并找合法可读路线，不冒称读过。"
+

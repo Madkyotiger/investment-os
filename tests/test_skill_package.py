@@ -23,13 +23,14 @@ def test_investment_research_skill_package_is_complete() -> None:
     text = SKILL_FILE.read_text(encoding="utf-8")
     metadata = _frontmatter(text)
     assert metadata["name"] == "investment-research"
-    assert metadata["version"] == "2.3.4"
+    assert metadata["version"] == "2.3.5"
 
     linked_paths = set(
         re.findall(r"`((?:references|templates)/[^`]+\.md)`", text)
     )
     assert linked_paths
-    external_links = {"templates/cxo-financial-brief.md"}
+    # Not shipped by design: the first is produced per run, the second exists only in a deployment.
+    external_links = {"templates/cxo-financial-brief.md", "references/local-deployment.md"}
     missing = sorted(
         path
         for path in linked_paths
