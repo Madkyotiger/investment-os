@@ -29,7 +29,7 @@ Proves collectors, schemas, caches, files, and deterministic boundary scans work
 
 A brief passes only when it:
 
-- contains 2–4 meaningful changes from the relevant 24–72 hour window; fewer or silent is allowed;
+- contains all qualified meaningful changes from the relevant 24–72 hour window, with no hard maximum or minimum; silence is allowed and item count never substitutes for usefulness;
 - changes research-attention allocation, not merely reports available data;
 - connects each item to the named reader's real questions, horizon, and exposure without inferring holdings;
 - states what changed, why it matters, the next research question/action, and the downgrade/kill condition;

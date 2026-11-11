@@ -235,6 +235,8 @@ Start thin:
 
 Do not add a knowledge graph or multi-agent committee before manual comparison samples prove value.
 
+When archiving a finished radar pilot, reconcile native run outputs with the research index and separate scheduled runs from manual validation. Freeze the existing bytes with a file manifest; retain missing/unverified labels and leave operational originals in place. Build date/topic navigation as a read-only projection of the existing state owner, not a second database. Wire index refresh after final-text persistence in the existing task, test idempotence and new-run accumulation, and keep local archiving distinct from off-machine backup or knowledge promotion.
+
 ## Model allocation
 
 - deterministic tools: collection, timestamping, dedupe, diff, table/speaker parsing;

@@ -297,7 +297,7 @@ Without these assets, a daily editorial model will rediscover themes and sound g
 
 ### Daily Signal Brief
 
-- 2–4 items; one or two are valid on a thin day.
+- Every qualified material item, with no fixed count; one or two are valid on a thin day.
 - One lead judgment only if earned.
 - Each item compresses: hard fact, current read, CXO implication/question.
 - Do not require a detailed document every day.
