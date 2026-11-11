@@ -366,8 +366,8 @@ TEXT_REPLACEMENTS = {
     " at ": "，单日 ",
     " on ": " 日期 ",
     "metadata": "元数据",
-    "Use market proxy moves only after cross-checking the quote source and matching them against rates, dollar and sector leadership": "先做行情二源校验，再和利率、美元、行业强弱一起看",
-    "If quote sources are stale, unavailable, or materially inconsistent, downgrade market-action commentary": "如果行情源过期、不可用，或二源明显不一致，就降级市场动作解读",
+    "Match market proxy moves against rates, dollar and sector leadership before interpreting them": "先和利率、美元、行业强弱一起看，再解读行情变化",
+    "If the quote source is stale or unavailable, downgrade market-action commentary": "如果行情源过期或不可用，就降级市场动作解读",
     "Price movement does not prove the cause of the move": "价格变化不能证明变化原因",
 }
 

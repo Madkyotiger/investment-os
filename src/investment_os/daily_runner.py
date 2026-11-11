@@ -347,7 +347,6 @@ def _source_health_key(value: str, *, source_url: str = "", item_id: str = "") -
         ("sec ", "sec"),
         ("yahoo", "market_yahoo"),
         ("yfinance", "market_yahoo"),
-        ("stooq", "market_stooq"),
     ):
         if marker in lowered:
             base = key
