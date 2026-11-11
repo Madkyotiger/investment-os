@@ -2,6 +2,8 @@ import json
 import types
 import builtins
 from datetime import date, datetime, timezone
+
+from investment_os.cxo_intelligence import _zh
 from pathlib import Path
 
 import pytest
@@ -118,7 +120,7 @@ def test_market_move_candidate_can_be_built_from_snapshot(monkeypatch):
     assert candidates[0].confidence == "market_data_probable"
     assert candidates[0].evidence_status == "single_source_data"
     assert candidates[0].tickers == "SPY,QQQ"
-    assert candidates[0].title == "QQQ 单日变化 1.4%，约为自身近60日日波动的 2.3 倍"
+    assert candidates[0].title == "QQQ 单日 1.4%，约为自身近60日日波动的 2.3 倍"
     assert "单源" in candidates[0].summary
     assert candidates[0].retrieved_at == "2026-07-08T00:00:00+00:00"
     assert candidates[0].thesis_impact == "unknown_narrowed"
@@ -231,7 +233,7 @@ def test_market_symbol_missing_from_the_quote_source_is_named_to_the_reader(monk
     assert candidate.confidence == "market_data_probable"
     assert candidate.evidence_status == "single_source_data"
     assert candidate.tickers == "SPY"
-    assert "主行情缺少 QQQ" in candidate.summary
+    assert candidate.summary.startswith("主行情缺少 QQQ。")
 
 
 def test_hard_source_rows_include_retrieval_and_body_contract_fields():
@@ -513,9 +515,10 @@ def test_market_move_is_judged_against_each_symbols_own_volatility(monkeypatch):
 
     candidate = collect_market_move_candidates(groups, datetime(2026, 7, 8, tzinfo=timezone.utc))[0]
 
-    assert candidate.title == "TLT 单日变化 -1.3%，约为自身近60日日波动的 2.2 倍"
+    assert candidate.title == "TLT 单日 -1.3%，约为自身近60日日波动的 2.2 倍"
+    assert _zh(candidate.title) == candidate.title  # the reader-text pass must not strip words from it
     assert candidate.thesis_impact == "unknown_narrowed"
-    assert candidate.summary.startswith("TLT 收盘 81.0，单日 -1.3%（自身近60日日波动的 2.2 倍）")
+    assert candidate.summary.startswith("TLT 收盘 81.0，单日 -1.3%（自身常态的 2.2 倍）")
 
     snapshot["TLT"]["one_day_pct"] = -0.9
     quiet = collect_market_move_candidates(groups, datetime(2026, 7, 8, tzinfo=timezone.utc))[0]

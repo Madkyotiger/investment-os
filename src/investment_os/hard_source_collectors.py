@@ -729,8 +729,8 @@ def collect_market_move_candidates(
     confidence = "market_data_probable"
     source_note = "行情为 Yahoo Finance 单源，没有二源核验；价格变化只作为待核验市场线索。"
     missing = [symbol for symbol in symbols if symbol not in snapshots]
-    if missing:
-        source_note = f"{source_note}主行情缺少 {', '.join(missing)}。"
+    # A long list is clipped from the end by the renderer, so a coverage gap is stated first.
+    gap_note = f"主行情缺少 {', '.join(missing)}。" if missing else ""
     ranked = sorted(
         snapshots.items(),
         key=lambda item: (_move_vs_own_volatility(item[1]), abs(float(item[1].get("one_day_pct", 0)))),
@@ -749,15 +749,15 @@ def collect_market_move_candidates(
 
     def describe(symbol: str, data: dict[str, object]) -> str:
         ratio = _move_vs_own_volatility(data)
-        versus_own = f"（自身近60日日波动的 {ratio:.1f} 倍）" if ratio else ""
+        versus_own = f"（自身常态的 {ratio:.1f} 倍）" if ratio else ""
         return f"{symbol} 收盘 {data['close']}，单日 {data['one_day_pct']}%{versus_own}，60日 {data['sixty_day_pct']}%"
 
     listed = unusual if len(unusual) >= 5 else ranked[:5]
     summary = "；".join(describe(symbol, data) for symbol, data in listed)
-    summary = f"{summary}。{source_note}"
+    summary = f"{gap_note}{summary}。{source_note}"
     if len(unusual) == 1:
         title = (
-            f"{top_symbol} 单日变化 {top['one_day_pct']}%，"
+            f"{top_symbol} 单日 {top['one_day_pct']}%，"
             f"约为自身近60日日波动的 {_move_vs_own_volatility(top):.1f} 倍"
         )
     elif unusual:
