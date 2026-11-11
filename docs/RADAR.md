@@ -19,14 +19,18 @@ uv run investment-os radar preflight \
   --db reports/upstream-radar/radar-index.sqlite \
   --out reports/upstream-radar/preflight/seen-state.json
 
-# 2. The agent researches and writes RUN/live-packet.json plus RUN/evidence/*
+# 2. First-hand official captures into the run folder (optional, recommended)
+uv run investment-os radar collect \
+  --run-dir RUN --config configs/radar_hard_sources.sample.yaml --sec NET,CRWV
 
-# 3. Validate the packet, select qualifying items, store the run
+# 3. The agent researches and writes RUN/live-packet.json plus RUN/evidence/*
+
+# 4. Validate the packet, select qualifying items, store the run
 uv run investment-os radar evaluate \
   --packet RUN/live-packet.json --config configs/upstream_radar.sample.yaml \
   --out RUN/output --run-dir RUN --db reports/upstream-radar/radar-index.sqlite
 
-# 4. After the agent has written and reviewed the final text, attach it and re-validate
+# 5. After the agent has written and reviewed the final text, attach it and re-validate
 uv run investment-os radar evaluate ... --delivery-file RUN/final.md
 
 # Read back the stored state
@@ -36,6 +40,29 @@ uv run investment-os radar store readback --db reports/upstream-radar/radar-inde
 `preflight` writes the full manifest and a compact `seen-state-digest.json` to read first. A missing or empty database blocks preflight: an empty history must be rebuilt on purpose, not assumed.
 
 `evaluate` exits `0` on `pass` and `1` otherwise. It writes `reader-brief.md` (a worksheet rendering), `selected-items.json`, `run-receipt.json` and `delivery-final.md` under `--out`. The receipt always records `claim_sent: false`: a rendered or stored text is not proof of delivery.
+
+## First-hand captures
+
+`radar collect` fetches the official, machine-readable sources listed in a config and saves each one under `RUN/hard-evidence/` as readable text with its SHA-256. It writes `hard-sources.json` (SourceManifest rows the agent copies into the packet for the captures it cites) and `digest.md` (the latest values in plain lines, plus anything that could not be captured).
+
+| Source | What is captured |
+|---|---|
+| FRED series | The series CSV: rates, inflation, labor, oil. FRED gives observation dates, not release dates |
+| TreasuryDirect | Auction results of the last days: term, high yield or discount rate, bid-to-cover, size |
+| Shanghai Futures Exchange | Settlement, change, volume and open interest of the most-traded contract per metal, for the last finished trading day |
+| Listed pages | An official page such as the NOAA ENSO discussion, checked against its expected title |
+| SEC EDGAR | For each ticker passed with `--sec` (or an SEC CIK number): filings in the lookback window, and for 8-K and 6-K the attached documents, which carry the earnings release |
+
+Rules:
+
+- For HTML and JSON sources the saved body is a text rendering, one table row per line. The raw response is stored beside it when small and always hashed in the manifest.
+- A response that is not the requested document is written with `identity_status: mismatch`, which the validator will not accept as evidence.
+- A source that could not be fetched is listed under "Not captured". Record it as a gap; it does not mean nothing happened.
+- An exchange file published before settlement is not a finished day and is skipped.
+- `--strict` exits `1` when anything requested was missing or mismatched.
+- SEC requests need `SEC_EDGAR_IDENTITY` (a name and contact email, as SEC asks of automated clients).
+
+The sample list comes from what real daily runs kept citing second-hand or recording as gaps. Sources that refuse plain requests (BLS release pages, LME, USDA at the time of writing) are not on it; the agent still has to read those itself or record the gap.
 
 ## Packet
 
@@ -105,6 +132,19 @@ uv run investment-os radar collection-report \
 The report restates what the runs in the window recorded: status of each run, days without a passing run, each coverage check's results, every source host with usable and unusable counts, gaps recorded by the validator, gaps the researcher declared, and how many due questions went unreviewed. It adds no judgment.
 
 This is the feedback path into this repository. A gap that keeps recurring in real runs (a data series the agent can never read first-hand, a source that is always blocked) is the evidence for adding a collector, changing a source route, or correcting a rule here.
+
+## Weekly live check
+
+Unit tests cannot tell that a source changed its format or started refusing requests. Run the live paths on a schedule and alert only on failure:
+
+```bash
+uv run --extra market investment-os daily --config configs/watchlist.sample.yaml \
+  --profile configs/profiles.sample.yaml --state /tmp/selfcheck-state.json --out /tmp/selfcheck-daily --strict
+uv run --extra china investment-os a-share-daily --config configs/a-share-watchlist.sample.yaml --out /tmp/selfcheck-a-share --strict
+uv run investment-os radar collect --run-dir /tmp/selfcheck-radar --config configs/radar_hard_sources.sample.yaml --strict
+```
+
+Each command exits non-zero when its path is broken. Pair them with `radar collection-report` over the last week of real runs, so the same review sees both what broke and what the runs could not read.
 
 ## What stays outside this repository
 

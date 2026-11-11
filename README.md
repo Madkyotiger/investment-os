@@ -64,7 +64,7 @@ Run it again with the same `--state` and a different `--out`: the second complet
 
 ## Daily radar
 
-`investment-os radar preflight | evaluate | store | collection-report` is the agent-researched path: the agent finds and reads sources and writes the brief, and the program checks the evidence packet it brings back. Nothing is published when coverage is incomplete and nothing qualifies, every qualifying item is kept, and open questions stay open until evidence closes them. `collection-report` summarizes what recent real runs could and could not collect; recurring gaps in that report are what drive new collectors and source routes in this repository. Commands, the packet format and the rules are in [`docs/RADAR.md`](docs/RADAR.md).
+`investment-os radar preflight | collect | evaluate | store | collection-report` is the agent-researched path: the agent finds and reads sources and writes the brief; the program fetches the official machine-readable sources first-hand (rates and macro series, Treasury auctions, exchange settlement prices, company filings) and checks the evidence packet the agent brings back. Nothing is published when coverage is incomplete and nothing qualifies, every qualifying item is kept, and open questions stay open until evidence closes them. `collection-report` summarizes what recent real runs could and could not collect; recurring gaps in that report are what drive new collectors and source routes in this repository. Commands, the packet format and the rules are in [`docs/RADAR.md`](docs/RADAR.md).
 
 ## On-demand expert and media source plan
 
@@ -196,7 +196,7 @@ uv run python scripts/public_release_guard.py
 
 ## Project status
 
-Version `0.2.2` repairs the live `daily` path, which stopped without output whenever a monthly macro release reached the brief; shows every qualifying change instead of the first five; judges market moves against each symbol's own volatility on closed sessions; and retires the early pilot modules with their `global-research` dependency profile. It is ready for installation and human-reviewed evaluation, not unattended production. Scheduling and downstream distribution remain outside this repository.
+Version `0.3.0` brings the daily radar into the package: the code a real agent-researched daily brief runs on, first-hand captures of the official sources those runs kept reading second-hand, and a report of what the runs could and could not collect. Version `0.2.2` repairs the live `daily` path, which stopped without output whenever a monthly macro release reached the brief; shows every qualifying change instead of the first five; judges market moves against each symbol's own volatility on closed sessions; and retires the early pilot modules with their `global-research` dependency profile. It is ready for installation and human-reviewed evaluation, not unattended production. Scheduling and downstream distribution remain outside this repository.
 
 The repository does not depend on or vendor FinceptTerminal. No FinceptTerminal code is copied here; external systems may be used only as behavioral comparison points during evaluation.
 
