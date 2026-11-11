@@ -6,6 +6,7 @@ import random
 import socket
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from typing import Callable
@@ -13,6 +14,8 @@ from typing import Callable
 from . import __version__
 
 TRANSIENT_STATUS_CODES = frozenset({408, 425, 429, 500, 502, 503, 504})
+# Agencies that turn away automated requests unless the User-Agent names a contact.
+CONTACT_IDENTITY_HOSTS = {"sec.gov": "SEC", "bls.gov": "BLS"}
 DEFAULT_USER_AGENT = f"InvestmentOS/{__version__} (+https://github.com/Madkyotiger/investment-os)"
 
 
@@ -61,12 +64,14 @@ class HttpClient:
     def _headers(self, url: str, user_agent: str | None) -> dict[str, str]:
         if user_agent:
             return {"User-Agent": user_agent}
-        if "sec.gov" in url:
+        host = (urllib.parse.urlsplit(url).hostname or "").lower()
+        agency = next((name for domain, name in CONTACT_IDENTITY_HOSTS.items() if host == domain or host.endswith(f".{domain}")), None)
+        if agency:
             identity = os.getenv("SEC_EDGAR_IDENTITY", "").strip()
             if not identity:
                 raise HttpRequestError(
                     "missing_identity",
-                    "SEC_EDGAR_IDENTITY is required for SEC requests",
+                    f"SEC_EDGAR_IDENTITY is required for {agency} requests",
                     url,
                     transient=False,
                 )

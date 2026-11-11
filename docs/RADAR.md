@@ -50,7 +50,8 @@ uv run investment-os radar store readback --db reports/upstream-radar/radar-inde
 | FRED series | The series CSV: rates, inflation, labor, oil. FRED gives observation dates, not release dates |
 | TreasuryDirect | Auction results of the last days: term, high yield or discount rate, bid-to-cover, size |
 | Shanghai Futures Exchange | Settlement, change, volume and open interest of the most-traded contract per metal, for the last finished trading day |
-| Listed pages | An official page such as the NOAA ENSO discussion, checked against its expected title |
+| Listed pages | An official page such as the NOAA ENSO discussion or a US Bureau of Labor Statistics news release (CPI, employment, PPI, productivity, job openings, employment costs), checked against its expected title or a marker in its body |
+| USDA reports | The latest issue of a report from the department's publication library, such as WASDE. The saved text file holds the tables; the written summary exists only in the PDF, which is linked but not read |
 | SEC EDGAR | For each ticker passed with `--sec` (or an SEC CIK number): filings in the lookback window, and for 8-K and 6-K the attached documents, which carry the earnings release |
 
 Rules:
@@ -61,9 +62,9 @@ Rules:
 - An exchange file published before settlement is not a finished day and is skipped.
 - A later call in the same run adds to the first: when the research finds that a company reported, `radar collect --run-dir RUN --sec TICKER` (no `--config` needed) adds its filings to the same manifest and digest.
 - `--strict` exits `1` when anything requested was missing or mismatched.
-- SEC requests need `SEC_EDGAR_IDENTITY` (a name and contact email, as SEC asks of automated clients).
+- SEC and BLS requests need `SEC_EDGAR_IDENTITY` (a name and contact email). Both agencies turn away automated requests that do not name a contact, and the same value is sent to both as the User-Agent. Without it those sources are listed under "Not captured" with that reason.
 
-The sample list comes from what real daily runs kept citing second-hand or recording as gaps. Sources that refuse plain requests (BLS release pages, LME, USDA at the time of writing) are not on it; the agent still has to read those itself or record the gap.
+The sample list comes from what real daily runs kept citing second-hand or recording as gaps. Two sources still refuse programs at the time of writing and are not on it: LME price pages (bot protection, no free official data service) and pages on www.usda.gov. For those the agent reads what it can reach and says where the figure came from. A limit that does not change from day to day belongs in the run's standing notes, not in each day's gap list.
 
 ## Packet
 

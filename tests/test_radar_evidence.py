@@ -46,6 +46,21 @@ RESPONSES: dict[str, tuple[str, str]] = {
         {"name": "q326earningspress.htm", "size": "447771"}, {"name": "R1.htm", "size": "38099"}, {"name": "logo.jpg", "size": "45607"},
     ]}})),
     f"{SEC_FOLDER}/cloud-20261110.htm": ("text/html", "<html><title>8-K</title><body><ix:header><p>hidden facts</p></ix:header><p>Item 2.02 Results of Operations</p></body></html>"),
+    # The title of this release changes every quarter; the body marker identifies it.
+    "https://www.bls.gov/news.release/prod2.nr0.htm": (
+        "text/html", "<html><head><title> Third Quarter 2026, Preliminary\r\n - 2026 Q03 Results </title></head><body><pre>"
+        "PRODUCTIVITY AND COSTS\nThird Quarter 2026, Preliminary\n\nNonfarm business sector labor productivity increased 3.6 percent</pre></body></html>"),
+    "https://esmis.nal.usda.gov/api/v1/release/findByIdentifier/wasde": ("application/json", json.dumps({"results": [
+        {"id": "1", "title": "World Agricultural Supply and Demand Estimates", "identifier": ["wasde"], "release_datetime": "2026-10-09T12:00:00+0000",
+         "files": ["https://esmis.nal.usda.gov/sites/default/release-files/1/wasde1026.txt"]},
+        {"id": "2", "title": "World Agricultural Supply and Demand Estimates", "identifier": ["wasde"], "release_datetime": "2026-11-10T12:00:00+0000",
+         "files": ["https://esmis.nal.usda.gov/sites/default/release-files/2/wasde1126.pdf", "https://esmis.nal.usda.gov/sites/default/release-files/2/wasde1126.txt"]},
+    ]})),
+    "https://esmis.nal.usda.gov/sites/default/release-files/2/wasde1126.txt": (
+        "text/plain", "   WASDE - 677 - 8      November 2026\r\n\r\nWheat\r\n   Nov     827.51    1110.36\r\n"),
+    "https://esmis.nal.usda.gov/api/v1/release/findByIdentifier/pdfonly": ("application/json", json.dumps({"results": [
+        {"id": "3", "title": "Some Report", "identifier": ["pdfonly"], "release_datetime": "2026-11-10T12:00:00+0000", "files": ["https://esmis.nal.usda.gov/x.pdf"]},
+    ]})),
     f"{SEC_FOLDER}/q326earningspress.htm": ("text/html", "<html><body><p>Cloudflare Announces Third Quarter Results</p><table><tr><td>Revenue</td><td>$</td><td><div>562.0</div></td></tr></table></body></html>"),
 }
 
@@ -149,6 +164,46 @@ def test_failed_and_mismatched_sources_are_reported_not_hidden(tmp_path: Path, c
     digest = (tmp_path / "hard-evidence" / "digest.md").read_text(encoding="utf-8")
     assert "## Not captured (record as gaps, not as nothing happened)" in digest
     assert "WARNING fred-wrong" in digest
+
+
+BLS_PAGE = {"id": "bls-productivity", "url": "https://www.bls.gov/news.release/prod2.nr0.htm",
+            "text_contains": "PRODUCTIVITY AND COSTS", "excerpt_after": "PRODUCTIVITY AND COSTS"}
+
+
+def test_agency_release_and_usda_report_are_captured(tmp_path: Path):
+    config = {"pages": [BLS_PAGE], "usda_reports": {"releases": {"wasde": "World Agricultural Supply and Demand Estimates"}}}
+    result = collect(tmp_path, config, NOW, client=_client())
+
+    assert [(row["source_id"], row["identity_status"]) for row in result.sources] == [("bls-productivity", "match"), ("usda-wasde", "match")]
+    usda = result.sources[1]
+    # The newest issue is taken whatever order the library lists them in.
+    assert usda["url"].endswith("/2/wasde1126.txt") and usda["publication_time"] == "2026-11-10T12:00:00+00:00"
+    saved = (tmp_path / usda["body_path"]).read_text(encoding="utf-8")
+    assert "\r" not in saved and "   Nov     827.51    1110.36\n" in saved
+    assert (tmp_path / usda["raw_body_path"]).read_bytes().count(b"\r\n") == 4
+    digest = (tmp_path / "hard-evidence" / "digest.md").read_text(encoding="utf-8")
+    assert "Third Quarter 2026, Preliminary - 2026 Q03 Results: Third Quarter 2026, Preliminary Nonfarm business sector labor productivity increased 3.6 percent" in digest
+    assert 'released 2026-11-10T12:00:00+00:00; text file begins "WASDE - 677 - 8 November 2026"' in digest
+    assert "which this capture did not read: https://esmis.nal.usda.gov/sites/default/release-files/2/wasde1126.pdf" in digest
+
+
+def test_a_page_or_report_that_is_not_the_one_asked_for_is_flagged(tmp_path: Path):
+    config = {
+        "pages": [{**BLS_PAGE, "text_contains": "EMPLOYMENT SITUATION"}, {"id": "no-marker", "url": BLS_PAGE["url"]}],
+        "usda_reports": {"releases": {"wasde": "Crop Production", "pdfonly": "Some Report"}},
+    }
+    result = collect(tmp_path, config, NOW, client=_client())
+
+    assert [(row["source_id"], row["identity_status"]) for row in result.sources] == [
+        ("bls-productivity", "mismatch"), ("no-marker", "mismatch"), ("usda-wasde", "mismatch")]
+    assert result.not_captured == [{"source_id": "usda-pdfonly", "url": "https://esmis.nal.usda.gov/", "error": "unreadable response: ValueError"}]
+
+
+def test_pages_in_an_older_encoding_keep_their_punctuation():
+    from investment_os.radar_evidence import _decode
+
+    assert _decode("JOB OPENINGS \u2013 SEPTEMBER".encode("cp1252")) == "JOB OPENINGS \u2013 SEPTEMBER"
+    assert _decode("镍 \u2013 Ni".encode("utf-8")) == "镍 \u2013 Ni"
 
 
 def test_strict_cli_exits_nonzero_when_a_source_is_missing(tmp_path: Path, monkeypatch, capsys):

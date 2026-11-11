@@ -119,7 +119,10 @@ def _html_title(markup: str) -> str:
 
 
 def _decode(body: bytes) -> str:
-    return body.decode("utf-8", errors="replace")
+    try:
+        return body.decode("utf-8")
+    except UnicodeDecodeError:
+        return body.decode("cp1252", errors="replace")  # older agency pages; keeps their dashes and quotes readable
 
 
 def _fetch(client: HttpClient, url: str, content_types: tuple[str, ...]) -> bytes:
@@ -152,7 +155,12 @@ def capture_fred_series(client: HttpClient, series_id: str, label: str, today: d
     )
 
 
-def capture_page(client: HttpClient, source_id: str, url: str, title_contains: str, excerpt_after: str) -> Capture:
+def capture_page(
+    client: HttpClient, source_id: str, url: str, title_contains: str, excerpt_after: str, text_contains: str = "",
+) -> Capture:
+    """One official page. It is the requested document when every marker given is found:
+    ``title_contains`` in the page title, ``text_contains`` in the body (for pages whose
+    title changes with every issue). At least one marker is required."""
     raw = _fetch(client, url, ("text/html",))
     markup = _decode(raw)
     title = _html_title(markup)
@@ -160,15 +168,63 @@ def capture_page(client: HttpClient, source_id: str, url: str, title_contains: s
     excerpt = ""
     if excerpt_after and excerpt_after in text:
         excerpt = " ".join(text.split(excerpt_after, 1)[1].split())[:320]
+    identity_ok = bool(title_contains or text_contains)
+    if title_contains:
+        identity_ok = identity_ok and title_contains.lower() in title.lower()
+    if text_contains:
+        identity_ok = identity_ok and text_contains in text
     return Capture(
         source_id=source_id,
         url=url,
         title=title or source_id,
         text=text,
         digest=[f"{title or source_id}: {excerpt or 'captured; read the saved text'}"],
-        identity_ok=bool(title_contains) and title_contains.lower() in title.lower(),
+        identity_ok=identity_ok,
         raw=raw,
         raw_suffix=".raw.html",
+    )
+
+
+def capture_usda_release(client: HttpClient, identifier: str, label: str) -> Capture:
+    """Latest issue of a USDA report from the department's publication library (ESMIS).
+
+    Saves the report's text file. For WASDE that file holds the tables; the written
+    summary exists only in the PDF, whose address goes into the digest.
+    """
+    listing_url = f"https://esmis.nal.usda.gov/api/v1/release/findByIdentifier/{identifier}"
+    listing = json.loads(_decode(_fetch(client, listing_url, ("application/json", "text/json"))))
+    releases = [row for row in (listing.get("results") or []) if isinstance(row, dict) and row.get("files")]
+    if not releases:
+        raise ValueError(f"no release listed for {identifier}")
+    latest = max(releases, key=lambda row: str(row.get("release_datetime") or ""))
+    files = [str(name) for name in latest["files"]]
+    text_url = next((name for name in files if name.lower().endswith(".txt")), "")
+    if not text_url:
+        raise ValueError(f"latest {identifier} release has no text file")
+    raw = _fetch(client, text_url, ("text/plain",))
+    text = _decode(raw).replace("\r\n", "\n")
+    title = str(latest.get("title") or identifier)
+    released = ""
+    try:
+        released = datetime.strptime(str(latest.get("release_datetime")), "%Y-%m-%dT%H:%M:%S%z").isoformat()
+    except ValueError:
+        pass
+    first_line = next((" ".join(line.split()) for line in text.splitlines() if line.strip()), "")
+    pdf = next((name for name in files if name.lower().endswith(".pdf")), "")
+    line = f"USDA {identifier} ({title}): released {released or 'at an unstated time'}; text file begins \"{first_line[:80]}\"."
+    if pdf:
+        line += f" Tables only; any written summary is in the PDF, which this capture did not read: {pdf}"
+    return Capture(
+        source_id=f"usda-{identifier.lower()}",
+        url=text_url,
+        title=f"USDA {title}",
+        text=text if text.endswith("\n") else text + "\n",
+        digest=[line],
+        identity_ok=label.lower() in title.lower() and identifier.lower() in [str(item).lower() for item in latest.get("identifier") or []],
+        raw=raw,
+        raw_suffix=".raw.txt",
+        publication_time=released,
+        publication_time_precision="minute" if released else "",
     )
 
 
@@ -399,13 +455,17 @@ def collect(
             client, s, str(t), today, int(fred.get("history_days", 120)))))
     for page in config.get("pages") or []:
         jobs.append((str(page["id"]), str(page["url"]), lambda p=page: capture_page(
-            client, str(p["id"]), str(p["url"]), str(p.get("title_contains", "")), str(p.get("excerpt_after", "")))))
+            client, str(p["id"]), str(p["url"]), str(p.get("title_contains", "")), str(p.get("excerpt_after", "")),
+            str(p.get("text_contains", "")))))
     if "treasury_auctions" in config:
         days = int((config["treasury_auctions"] or {}).get("days", 7))
         jobs.append(("treasury-auctions", "https://www.treasurydirect.gov/", lambda: capture_treasury_auctions(client, days)))
     if "shfe_daily" in config:
         products = dict((config["shfe_daily"] or {}).get("products") or {})
         jobs.append(("shfe-daily", "https://www.shfe.com.cn/", lambda: capture_shfe_daily(client, products, today)))
+    for identifier, label in ((config.get("usda_reports") or {}).get("releases") or {}).items():
+        jobs.append((f"usda-{str(identifier).lower()}", "https://esmis.nal.usda.gov/", lambda i=identifier, t=label: capture_usda_release(
+            client, str(i), str(t))))
 
     captures: list[Capture] = []
     for source_id, url, job in jobs:

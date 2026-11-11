@@ -104,3 +104,28 @@ def test_http_client_accepts_standard_application_csv_response():
     text = HttpClient(opener=lambda _request, _timeout: response).get_text("https://example.test/series.csv")
 
     assert text.startswith("observation_date,DGS2")
+
+
+def test_contact_identity_goes_to_the_agencies_that_ask_for_it_and_nowhere_else(monkeypatch):
+    seen = {}
+    monkeypatch.setenv("SEC_EDGAR_IDENTITY", "researcher@example.com")
+
+    def opener(request, _timeout):
+        seen[request.full_url] = dict(request.header_items())["User-agent"]
+        return FakeResponse(json.dumps({"ok": True}).encode())
+
+    client = HttpClient(opener=opener)
+    for url in ("https://www.bls.gov/news.release/cpi.nr0.htm", "https://example.test/?next=sec.gov", "https://notsec.gov.example.test/x"):
+        client.get_bytes(url)
+
+    assert seen["https://www.bls.gov/news.release/cpi.nr0.htm"] == "researcher@example.com"
+    assert "researcher@example.com" not in (seen["https://example.test/?next=sec.gov"], seen["https://notsec.gov.example.test/x"])
+
+
+def test_agency_request_without_a_contact_identity_says_what_is_missing(monkeypatch):
+    monkeypatch.delenv("SEC_EDGAR_IDENTITY", raising=False)
+
+    with pytest.raises(HttpRequestError) as error:
+        HttpClient(opener=lambda *_: None).get_bytes("https://www.bls.gov/news.release/cpi.nr0.htm")
+
+    assert error.value.code == "missing_identity" and "BLS" in error.value.message
