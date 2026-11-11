@@ -117,6 +117,8 @@ def build_collection_report(
             "sources": len(sources),
             "usable_sources": usable,
             "unreviewed_due_followups": len(receipt.get("unreviewed_due_followups") or []),
+            "deferred_due_followups": len(receipt.get("deferred_due_followups") or []),
+            "followups_reviewed": len(packet.get("followup_updates") or []),
         })
 
     days_with_pass = {row["run"][:10] for row in runs if row["status"] == "pass"}
@@ -155,12 +157,13 @@ def render_markdown(report: dict[str, Any]) -> str:
         "",
         "## Runs",
         "",
-        "| Run | Status | Selected | Sources (usable) | Due questions not reviewed |",
-        "|---|---|---|---|---|",
+        "| Run | Status | Selected | Sources (usable) | Questions reviewed | Required, not reviewed | Due, beyond the review budget |",
+        "|---|---|---|---|---|---|---|",
     ]
     lines += [
         f"| {row['run']} | {row['status']} {row['outcome']} | {row['selected_items']} | "
-        f"{row['sources']} ({row['usable_sources']}) | {row['unreviewed_due_followups']} |"
+        f"{row['sources']} ({row['usable_sources']}) | {row['followups_reviewed']} | "
+        f"{row['unreviewed_due_followups']} | {row['deferred_due_followups']} |"
         for row in runs
     ]
     lines += ["", "## Coverage checks", "", "| Check | Result counts |", "|---|---|"]

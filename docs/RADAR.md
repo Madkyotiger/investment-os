@@ -116,11 +116,21 @@ Every qualifying item is selected. There is no item quota in either direction.
 
 - **A gap affects only what depends on it.** A defective source makes that source unusable; items built on it are excluded and the rest are published. The receipt lists every gap. The run is blocked only when nothing qualifies and gaps exist, because silence would then pass for "checked, nothing happened".
 - **Open questions are tracked, not forgotten.** Each selected item opens a question under its `tracking_key`. A due question is covered by a `followup_update` backed by sources from this run, or by new selected evidence under the same key. Reviewing is not resolving: an unresolved question stays `open` with a later `next_check_at`. Uncovered due questions are listed in the receipt on a publishing run and block a silent one.
+- **A run reviews what it can finish.** With `followup_review_budget: N` in the config, each run must review at most N due questions. The program picks them: a question nobody has looked at since it was opened comes first, then higher impact, then the longest wait. The other due questions stay open and are handed over as one line each (`due_deferred`). They can still be reviewed when the day's research touches them, they do not block a silent run, and the receipt counts them under `deferred_due_followups`. Without the setting every due question is required.
 - **Questions expire.** A question whose latest selected evidence is older than 14 days is no longer mandatory; no question lives longer than 45 days. New evidence under the same key restarts the clock.
 - **Gaps in the schedule are caught up.** When the last successful run is more than 72 hours old, preflight returns `catchup_since` and the packet must carry it. Items found in the catch-up window are marked as late discoveries.
 - **No final text, no publication.** With selected items and a submitted final, the text must be non-empty. If the packet records a `writing_gate`, only `status=pass` with `delivery_authorized=true` unblocks it.
 - **No trade instructions.** Buy, sell, hold, position-size, target-price and execution language is rejected in items and in the final text.
 - **Silence is explicit.** With `silent_no_push: true`, a run with nothing to publish stores `[SILENT]` as its final. Evidence, candidates and question reviews are still stored.
+
+### Why the review budget puts first looks first
+
+Three weeks of real daily runs, replayed with the package's own code:
+
+- About 9 questions were opened a day and about 9 reviews were done a day. Two thirds of those reviews went to questions that had already been reviewed, so 69% of the questions opened in the window had not been looked at once by its end.
+- With the same 9 reviews a day, "not yet reviewed first" reaches 80% of the questions; "highest impact first" reaches 36%, "scheduled re-checks first" 30%.
+- With 12 a day it reaches all of them.
+- None of the 11 reviews that actually closed or replaced a judgment in that period would have been on a budgeted list that morning. They happened because the day's news touched the question. The list guarantees a first look; changes of judgment come from the day's research, which is why the deferred questions stay visible.
 
 ## Collection report
 
@@ -130,7 +140,7 @@ uv run investment-os radar collection-report \
   --config configs/upstream_radar.sample.yaml --out reports/upstream-radar/collection-7d.md
 ```
 
-The report restates what the runs in the window recorded: status of each run, days without a passing run, each coverage check's results, every source host with usable and unusable counts, gaps recorded by the validator, gaps the researcher declared, and how many due questions went unreviewed. It adds no judgment.
+The report restates what the runs in the window recorded: status of each run, days without a passing run, each coverage check's results, every source host with usable and unusable counts, gaps recorded by the validator, gaps the researcher declared, and for open questions how many were reviewed, how many required ones were not, and how many were beyond the run's review budget. It adds no judgment.
 
 This is the feedback path into this repository. A gap that keeps recurring in real runs (a data series the agent can never read first-hand, a source that is always blocked) is the evidence for adding a collector, changing a source route, or correcting a rule here.
 
