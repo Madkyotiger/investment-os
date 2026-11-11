@@ -31,11 +31,44 @@ shfe_daily:
     sn: Tin
     au: Gold
     ag: Silver
+# A page is the requested document when every marker given is found: title_contains in
+# the page title, text_contains in the body (for pages whose title changes each issue).
 pages:
   - id: noaa-enso-discussion
     url: https://www.cpc.ncep.noaa.gov/products/analysis_monitoring/enso_advisory/ensodisc.shtml
     title_contains: ENSO Diagnostic Discussion
     excerpt_after: "Synopsis:"
+  # US Bureau of Labor Statistics news releases, latest issue of each. bls.gov turns away
+  # requests without a contact in the User-Agent, so these need SEC_EDGAR_IDENTITY set.
+  - id: bls-cpi
+    url: https://www.bls.gov/news.release/cpi.nr0.htm
+    title_contains: Consumer Price Index Summary
+    excerpt_after: CONSUMER PRICE INDEX
+  - id: bls-employment-situation
+    url: https://www.bls.gov/news.release/empsit.nr0.htm
+    title_contains: Employment Situation Summary
+    excerpt_after: THE EMPLOYMENT SITUATION
+  - id: bls-ppi
+    url: https://www.bls.gov/news.release/ppi.nr0.htm
+    title_contains: Producer Price Index News Release
+    excerpt_after: PRODUCER PRICE INDEXES
+  - id: bls-productivity
+    url: https://www.bls.gov/news.release/prod2.nr0.htm
+    text_contains: PRODUCTIVITY AND COSTS
+    excerpt_after: PRODUCTIVITY AND COSTS
+  - id: bls-jolts
+    url: https://www.bls.gov/news.release/jolts.nr0.htm
+    title_contains: Job Openings and Labor Turnover Summary
+    excerpt_after: JOB OPENINGS AND LABOR TURNOVER
+  - id: bls-employment-cost-index
+    url: https://www.bls.gov/news.release/eci.nr0.htm
+    title_contains: Employment Cost Index Summary
+    excerpt_after: EMPLOYMENT COST INDEX
+# Latest issue of USDA reports, from the department's publication library (esmis.nal.usda.gov).
+# Key: the report's library identifier. Value: words its title must contain.
+usda_reports:
+  releases:
+    wasde: World Agricultural Supply and Demand Estimates
 sec:
   forms: [8-K, 10-Q, 10-K, 6-K, 20-F, S-1, S-1/A]
   lookback_days: 4
