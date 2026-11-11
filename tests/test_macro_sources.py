@@ -12,6 +12,7 @@ from investment_os.judgment_kernel import classify_change, is_promotable
 from investment_os.macro_sources import (
     collect_macro_observations,
     load_macro_series,
+    observation_freshness,
     parse_latest_observation,
 )
 
@@ -42,13 +43,15 @@ def test_bundled_macro_config_preserves_materiality_thresholds_outside_checkout(
     monkeypatch.chdir(tmp_path)
     bundled = load_macro_series()
 
-    assert {
-        series_id: definition.material_change_threshold
-        for series_id, definition in bundled.items()
-    } == {
-        series_id: definition.material_change_threshold
-        for series_id, definition in checkout.items()
-    }
+    assert bundled == checkout
+
+
+def test_pce_release_is_still_current_on_the_day_it_is_published():
+    # A month's PCE price index is published near the end of the following month:
+    # September (observation date 2026-09-01) arrives around 2026-10-30.
+    definition = load_macro_series(Path("configs/macro_series.yaml"))["PCEPI"]
+
+    assert observation_freshness("2026-09-01", datetime(2026, 10, 30, tzinfo=timezone.utc), definition) == "current"
 
 
 def test_macro_config_rejects_nonpositive_materiality_threshold(tmp_path):

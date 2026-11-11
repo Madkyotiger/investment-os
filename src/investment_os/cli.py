@@ -407,7 +407,17 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "a-share-daily":
         from .a_share_daily import run_a_share_daily
 
-        result = run_a_share_daily(args.config, args.out, offline=args.offline)
+        try:
+            result = run_a_share_daily(args.config, args.out, offline=args.offline)
+        except ModuleNotFoundError as error:
+            if error.name != "akshare":
+                raise
+            print(
+                "a_share_daily=fail reason=akshare_not_installed "
+                "hint='run with: uv run --frozen --extra china investment-os a-share-daily ...'",
+                file=sys.stderr,
+            )
+            return 2
         if args.strict and result.usable_symbols == 0:
             print("a_share_daily=fail reason=no_usable_rows", file=sys.stderr)
             return 2

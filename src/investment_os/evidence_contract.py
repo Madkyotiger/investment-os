@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
 from typing import Mapping
 
 EVIDENCE_STATUSES = frozenset(
@@ -26,18 +25,6 @@ _STATUS_ALIASES = {
     "unknown": "unavailable",
     "": "",
 }
-
-
-@dataclass(frozen=True)
-class SourceError:
-    code: str
-    message: str
-    source_url: str = ""
-    transient: bool = False
-    occurred_at: str = ""
-
-    def to_dict(self) -> dict[str, str | bool]:
-        return asdict(self)
 
 
 def normalize_evidence_status(row: Mapping[str, object]) -> str:

@@ -58,6 +58,8 @@ series:
   PCEPI:
     label: Personal Consumption Expenditures Price Index
     cadence: monthly
-    stale_after_days: 50
+    # Published about 56-62 days after the first day of its reference month, so a
+    # shorter window marks every release stale on arrival.
+    stale_after_days: 75
     unit: index
     material_change_threshold: 0.1

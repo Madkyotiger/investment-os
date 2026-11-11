@@ -100,8 +100,11 @@ def infer_research_question(row: Mapping[str, object]) -> str:
     ticker = _text(row, "tickers") or "该公司"
     if source_type == "primary_sec_recent_filing":
         return f"{ticker} 这份披露正文是否包含会改变经营、风险或资本配置判断的新事实？"
-    if source_type in {"primary_macro_fred_live", "primary_macro_fred_yields_live", "primary_macro_rates"}:
+    if source_type in {"primary_macro_fred_yields_live", "primary_macro_rates"}:
         return "利率变化是否得到美元、期限资产与成长板块相对表现的交叉确认？"
+    if source_type == "primary_macro_fred_live":
+        # One FRED series per item: prices, jobs and policy-rate prints are not all "rate changes".
+        return "这次官方数据变化是否得到相邻官方序列，以及利率、美元等市场定价的交叉确认？"
     if source_type in {"market_proxy_prices_live", "market_data"}:
         return "这次价格变化来自公司事实、行业 beta，还是资金与情绪？"
     next_check = _text(row, "next_check")

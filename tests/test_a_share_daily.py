@@ -180,3 +180,18 @@ def test_beijing_symbol_is_not_routed_to_shanghai_or_shenzhen_margin():
     )
     assert rows[0].status == "not_applicable"
     assert rows[0].source == "SSE/SZSE margin-detail feeds"
+
+
+def test_margin_feed_cut_at_a_page_size_is_a_source_error_not_a_missing_row():
+    generated_at = datetime(2026, 11, 11, 5, 0, tzinfo=timezone.utc)
+    receipt = SourceReceipt("AKShare.stock_margin_detail_sse", "ok", 2000, "2026-11-10", "official_public_data_via_adapter")
+    symbol = [AShareSymbol("688981", "中芯国际")]
+
+    def margin_rows(frame: pd.DataFrame) -> list[EvidenceItem]:
+        return _margin_evidence(symbol, {"sse": frame, "szse": None}, {"sse": receipt, "szse": receipt}, generated_at)
+
+    cut_before_symbol = pd.DataFrame({"标的证券代码": [f"{600000 + index}" for index in range(2000)]})
+    complete_list = pd.DataFrame({"标的证券代码": [f"{600000 + index}" for index in range(1999)]})
+
+    assert margin_rows(cut_before_symbol)[0].status == "source_error"
+    assert margin_rows(complete_list)[0].status == "missing"

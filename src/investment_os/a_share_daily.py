@@ -315,7 +315,7 @@ def fetch_stock_price_evidence(
             symbol,
             category="a_share_price",
             claim="Latest A-share close",
-            value=_format_number(close),
+            value=f"{close:.2f}" if close is not None else "n/a",
             source=source,
             as_of_date=latest_date,
             freshness=freshness,
@@ -481,6 +481,14 @@ def _code_matches(frame: pd.DataFrame, code: str, *columns: str) -> pd.DataFrame
     return frame[normalized == code]
 
 
+def _beyond_partial_list(frame: pd.DataFrame, code: str) -> bool:
+    """A feed cut at a round page size says nothing about codes after its last row."""
+    column = _column(frame, "标的证券代码", "证券代码")
+    if not column or len(frame) < 1000 or len(frame) % 1000:
+        return False
+    return code > frame[column].map(_normalize_code).max()
+
+
 def _event_evidence(
     symbols: list[AShareSymbol],
     frame: pd.DataFrame | None,
@@ -617,7 +625,11 @@ def _margin_evidence(
             note = receipt.error
         else:
             matched = _code_matches(frame, symbol.code, "标的证券代码", "证券代码")
-            if matched.empty:
+            if matched.empty and _beyond_partial_list(frame, symbol.code):
+                status = "source_error"
+                value = "unavailable"
+                note = f"The source returned a partial list ({len(frame)} rows) that ends before this code."
+            elif matched.empty:
                 status = "missing"
                 value = "no_row"
                 note = "The stock may not be margin-eligible or the source has no row."
@@ -736,7 +748,9 @@ def render_a_share_brief(
             increased = int(float(data.get("increase", "0") or 0))
             decreased = int(float(data.get("decrease", "0") or 0))
             if increased or decreased:
-                observations.append(f"最新可得机构披露中，增持条目{increased}个、减持条目{decreased}个")
+                quarter = data.get("quarter", "")
+                period = f"（{quarter[:4]}年{'一二三四'[int(quarter[4]) - 1]}季度）" if len(quarter) == 5 and quarter[4] in "1234" else ""
+                observations.append(f"最新可得机构披露{period}中，增持条目{increased}个、减持条目{decreased}个")
 
         price = rows.get("a_share_price_change")
         volume = rows.get("a_share_volume_ratio")
@@ -771,7 +785,7 @@ def render_a_share_brief(
         judgment = "今天没有足够强的机构行为信号。价格和成交变化可以记录，但还不能据此判断机构方向。"
 
     lines = [
-        f"# A股机构观察｜{generated_at.date().isoformat()}",
+        f"# A股机构观察｜{generated_at.astimezone(A_SHARE_TIMEZONE).date().isoformat()}",
         "",
         f"**今天的判断：**{judgment}",
     ]
@@ -787,7 +801,7 @@ def render_a_share_brief(
     ])
     brief = "\n".join(lines)
     if len(brief) > 1200:
-        brief = "\n".join(lines[:7] + lines[-3:])
+        brief = "\n".join(lines[:7] + lines[-4:])
     return brief
 
 
