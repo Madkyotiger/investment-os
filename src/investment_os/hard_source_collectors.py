@@ -6,9 +6,10 @@ import hashlib
 import json
 import tempfile
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import yaml
 
@@ -230,7 +231,6 @@ def _latest_sec_business_filing_for_cik(cik: str) -> dict[str, str] | None:
 def collect_sec_recent_filing_candidates(
     watchlist_groups: dict[str, list[str]],
     generated_at: datetime,
-    max_symbols: int = 8,
     symbol_metadata: dict[str, dict[str, object]] | None = None,
     sec_map: dict | None = None,
 ) -> list[HardSourceCandidate]:
@@ -252,7 +252,20 @@ def collect_sec_recent_filing_candidates(
         sec_map = _safe_sec_recent()
     cik_by_ticker = {str(row.get("ticker", "")).upper(): str(row.get("cik_str", "")) for row in sec_map.values()}
     candidates: list[HardSourceCandidate] = []
-    for ticker in symbols[:max_symbols]:
+    unmatched = [ticker for ticker in symbols if not cik_by_ticker.get(ticker)] if cik_by_ticker else []
+    if unmatched:
+        _LAST_SOURCE_ERRORS.append(
+            {
+                "source": "SEC company_tickers.json",
+                "lane": "company_events",
+                "code": "not_checked",
+                "message": f"No SEC CIK for {len(unmatched)} symbol(s), filings not checked: {', '.join(unmatched)}",
+                "source_url": "https://www.sec.gov/files/company_tickers.json",
+                "affected_count": len(unmatched),
+                "transient": False,
+            }
+        )
+    for ticker in symbols:
         cik = cik_by_ticker.get(ticker.upper(), "")
         latest = _latest_sec_filing_for_cik(cik)
         if not latest or latest["form"] not in RELEVANT_SEC_FORMS:
@@ -565,7 +578,32 @@ def collect_fred_yield_candidates(generated_at: datetime) -> list[HardSourceCand
     )]
 
 
-def _download_yfinance_snapshot(symbols: list[str]) -> dict[str, dict[str, float | str]]:
+UNUSUAL_MOVE_VOL_MULTIPLE = 2.0
+_SESSION_CLOSE = {
+    ".HK": ("Asia/Hong_Kong", time(16, 10)),
+    ".SS": ("Asia/Shanghai", time(15, 0)),
+    ".SZ": ("Asia/Shanghai", time(15, 0)),
+}
+_DEFAULT_SESSION_CLOSE = ("America/New_York", time(16, 0))
+_SESSION_SETTLE = timedelta(minutes=15)
+
+
+def _session_is_complete(symbol: str, bar_date: date, now: datetime) -> bool:
+    """A daily bar is a close only after its exchange has closed; before that it is a moving quote."""
+    zone, close = next(
+        (value for suffix, value in _SESSION_CLOSE.items() if symbol.upper().endswith(suffix)),
+        _DEFAULT_SESSION_CLOSE,
+    )
+    return now >= datetime.combine(bar_date, close, ZoneInfo(zone)) + _SESSION_SETTLE
+
+
+def _move_vs_own_volatility(data: dict[str, object]) -> float:
+    volatility = _safe_float(data.get("daily_vol_pct"))
+    move = _safe_float(data.get("one_day_pct"))
+    return abs(move) / volatility if volatility and move is not None else 0.0
+
+
+def _download_yfinance_snapshot(symbols: list[str]) -> dict[str, dict[str, float | str | None]]:
     try:
         import yfinance as yf
     except ImportError:
@@ -622,131 +660,33 @@ def _download_yfinance_snapshot(symbols: list[str]) -> dict[str, dict[str, float
         close = data["Close"]
     except Exception:
         close = data
-    snapshots: dict[str, dict[str, float | str]] = {}
+    snapshots: dict[str, dict[str, float | str | None]] = {}
+    now = datetime.now(timezone.utc)
     for symbol in symbols:
         try:
             series = close[symbol].dropna() if hasattr(close, "columns") else close.dropna()
         except Exception:
             continue
+        if len(series) and hasattr(series.index[-1], "date") and not _session_is_complete(
+            symbol, series.index[-1].date(), now
+        ):
+            series = series.iloc[:-1]
         if len(series) < 5:
             continue
         last = float(series.iloc[-1])
         prev = float(series.iloc[-2]) if len(series) >= 2 else last
         base_60 = float(series.iloc[-60]) if len(series) >= 60 else float(series.iloc[0])
+        earlier_moves = (series.pct_change().dropna() * 100).iloc[-61:-1]
         snapshots[symbol] = {
             "date": str(series.index[-1].date()) if hasattr(series.index[-1], "date") else str(series.index[-1]),
             "close": round(last, 4),
             "one_day_pct": round((last / prev - 1) * 100, 2) if prev else 0.0,
             "sixty_day_pct": round((last / base_60 - 1) * 100, 2) if base_60 else 0.0,
+            "daily_vol_pct": round(float(earlier_moves.std()), 2) if len(earlier_moves) >= 20 else None,
         }
     return snapshots
 
 
-
-def _stooq_symbol(symbol: str) -> str | None:
-    mapping = {"SPY": "spy.us", "QQQ": "qqq.us", "IWM": "iwm.us", "XLK": "xlk.us", "SMH": "smh.us", "TLT": "tlt.us", "UUP": "uup.us"}
-    normalized = symbol.strip().upper()
-    if normalized in mapping:
-        return mapping[normalized]
-    if normalized.endswith(".HK"):
-        code = normalized.removesuffix(".HK")
-        return f"{int(code)}.hk" if code.isdigit() else None
-    if "." in normalized or not normalized.replace("-", "").isalpha():
-        return None
-    return f"{normalized.lower()}.us"
-
-
-def _download_stooq_snapshot(symbols: list[str]) -> dict[str, dict[str, float | str]]:
-    snapshots: dict[str, dict[str, float | str]] = {}
-    unusable: list[tuple[str, str]] = []
-    for symbol in symbols:
-        stooq_symbol = _stooq_symbol(symbol)
-        if not stooq_symbol:
-            continue
-        url = f"https://stooq.com/q/d/l/?s={stooq_symbol}&i=d"
-        try:
-            text = _http_text(url, timeout=10)
-            rows = list(csv.DictReader(text.splitlines()))
-        except HttpRequestError:
-            unusable.append((symbol, url))
-            continue
-        clean = [row for row in rows if _safe_float(row.get("Close")) is not None]
-        if len(clean) < 5:
-            unusable.append((symbol, url))
-            continue
-        last_row = clean[-1]
-        prev_row = clean[-2]
-        base_row = clean[-60] if len(clean) >= 60 else clean[0]
-        last = float(last_row["Close"])
-        prev = float(prev_row["Close"])
-        base_60 = float(base_row["Close"])
-        snapshots[symbol] = {
-            "date": str(last_row.get("Date", "")),
-            "close": round(last, 4),
-            "one_day_pct": round((last / prev - 1) * 100, 2) if prev else 0.0,
-            "sixty_day_pct": round((last / base_60 - 1) * 100, 2) if base_60 else 0.0,
-        }
-    if unusable:
-        symbols_text = ", ".join(symbol for symbol, _url in unusable)
-        _LAST_SOURCE_ERRORS.append(
-            {
-                "source": "Stooq",
-                "lane": "market_action",
-                "code": "invalid_response",
-                "message": f"Stooq returned no usable daily CSV rows for {len(unusable)} symbol(s): {symbols_text}",
-                "source_url": unusable[0][1],
-                "affected_count": len(unusable),
-                "transient": True,
-            }
-        )
-    return snapshots
-
-
-def _cross_check_market_snapshot(
-    primary: dict[str, dict[str, float | str]],
-    secondary: dict[str, dict[str, float | str]],
-    expected_symbols: list[str] | None = None,
-) -> tuple[str, str]:
-    expected = set(expected_symbols or primary)
-    missing_primary = sorted(expected - set(primary))
-    if not secondary:
-        return "market_data_probable", "二源行情暂未取得；价格变化只作为待核验市场线索。"
-    checked = 0
-    mismatches: list[str] = []
-    missing: list[str] = []
-    for symbol, pdata in primary.items():
-        sdata = secondary.get(symbol)
-        if not sdata:
-            missing.append(symbol)
-            continue
-        checked += 1
-        if str(pdata.get("date", "")) != str(sdata.get("date", "")):
-            mismatches.append(f"{symbol}(date)")
-            continue
-        pclose = _safe_float(pdata.get("close"))
-        sclose = _safe_float(sdata.get("close"))
-        if pclose is None or sclose is None or pclose == 0 or sclose == 0:
-            mismatches.append(f"{symbol}(close)")
-        elif abs(pclose / sclose - 1) > 0.03 + 1e-12:
-            mismatches.append(f"{symbol}(close)")
-    if checked == 0:
-        return "market_data_probable", "二源行情没有覆盖当前代理资产；价格变化只作为待核验市场线索。"
-    if mismatches:
-        return "market_data_mixed", f"二源行情存在日期或收盘价冲突：{', '.join(mismatches)}。"
-    if missing_primary:
-        return (
-            "market_data_probable",
-            f"Yahoo Finance 主行情缺少 {', '.join(missing_primary)}；现有价格变化只作为待核验市场线索。",
-        )
-    if checked != len(primary):
-        return (
-            "market_data_probable",
-            f"Stooq 二源行情只覆盖 {checked}/{len(primary)} 个代理资产；未覆盖 {', '.join(missing)}，不能标记为完整二源核验。",
-        )
-    return (
-        "market_data_cross_checked",
-        f"Stooq 二源行情已按同一日期覆盖全部 {checked} 个代理资产，收盘价未见超过 3% 的偏差。",
-    )
 
 def _market_price_symbols(
     watchlist_groups: dict[str, list[str]],
@@ -785,20 +725,19 @@ def collect_market_move_candidates(
     snapshots = _download_yfinance_snapshot(symbols)
     if not snapshots:
         return []
-    secondary = _download_stooq_snapshot(symbols)
-    confidence, cross_check_note = _cross_check_market_snapshot(snapshots, secondary, symbols)
-    source_errors = []
-    if confidence == "market_data_mixed":
-        source_errors.append(
-            {
-                "code": "source_conflict",
-                "message": cross_check_note,
-                "source_url": "https://stooq.com/",
-                "transient": False,
-            }
-        )
-    ranked = sorted(snapshots.items(), key=lambda item: abs(float(item[1].get("one_day_pct", 0))), reverse=True)
+    # One quote source: prices are never reported as cross-checked.
+    confidence = "market_data_probable"
+    source_note = "行情为 Yahoo Finance 单源，没有二源核验；价格变化只作为待核验市场线索。"
+    missing = [symbol for symbol in symbols if symbol not in snapshots]
+    # A long list is clipped from the end by the renderer, so a coverage gap is stated first.
+    gap_note = f"主行情缺少 {', '.join(missing)}。" if missing else ""
+    ranked = sorted(
+        snapshots.items(),
+        key=lambda item: (_move_vs_own_volatility(item[1]), abs(float(item[1].get("one_day_pct", 0)))),
+        reverse=True,
+    )
     top_symbol, top = ranked[0]
+    unusual = [(symbol, data) for symbol, data in ranked if _move_vs_own_volatility(data) >= UNUSUAL_MOVE_VOL_MULTIPLE]
     market_freshness_threshold = load_market_stale_after_days()
     try:
         market_age_days = (
@@ -807,11 +746,27 @@ def collect_market_move_candidates(
     except ValueError:
         market_age_days = market_freshness_threshold + 1
     freshness_status = "current" if 0 <= market_age_days <= market_freshness_threshold else "stale"
-    top_one_day_move = abs(float(top.get("one_day_pct", 0)))
-    summary = "; ".join(f"{symbol}: close {data['close']}, 1D {data['one_day_pct']}%, 60D {data['sixty_day_pct']}%" for symbol, data in ranked[:5])
-    summary = f"{summary}. {cross_check_note}"
+
+    def describe(symbol: str, data: dict[str, object]) -> str:
+        ratio = _move_vs_own_volatility(data)
+        versus_own = f"（自身常态的 {ratio:.1f} 倍）" if ratio else ""
+        return f"{symbol} 收盘 {data['close']}，单日 {data['one_day_pct']}%{versus_own}，60日 {data['sixty_day_pct']}%"
+
+    listed = unusual if len(unusual) >= 5 else ranked[:5]
+    summary = "；".join(describe(symbol, data) for symbol, data in listed)
+    summary = f"{gap_note}{summary}。{source_note}"
+    if len(unusual) == 1:
+        title = (
+            f"{top_symbol} 单日 {top['one_day_pct']}%，"
+            f"约为自身近60日日波动的 {_move_vs_own_volatility(top):.1f} 倍"
+        )
+    elif unusual:
+        movers = "、".join(f"{symbol} {data['one_day_pct']}%" for symbol, data in unusual)
+        title = f"观察名单中 {len(unusual)} 只标的单日波动超出自身常态：{movers}"
+    else:
+        title = "市场观察名单单日波动均在各自常态范围内"
     observed_value = json.dumps(
-        {"primary_yfinance": snapshots, "secondary_stooq": secondary},
+        {"primary_yfinance": snapshots},
         sort_keys=True,
         separators=(",", ":"),
     )
@@ -819,21 +774,21 @@ def collect_market_move_candidates(
     return [HardSourceCandidate(
         item_id="market_live:proxy_moves",
         lane="market_action",
-        title=f"市场观察名单单日波动由 {top_symbol} 领跑，变化 {top['one_day_pct']}%",
+        title=title,
         summary=summary,
-        source="yfinance daily adjusted prices + Stooq cross-check",
+        source="yfinance daily adjusted prices",
         source_type="market_proxy_prices_live",
         as_of_date=str(top.get("date", generated_at.date().isoformat())),
         tickers=",".join(symbol for symbol in symbols if symbol in snapshots),
         themes="market_prices,watchlist",
         source_url="https://query1.finance.yahoo.com/",
-        source_authority=4 if confidence == "market_data_cross_checked" else 3,
+        source_authority=3,
         freshness=1 if freshness_status == "stale" else 5,
-        evidence_change=4 if top_one_day_move >= 1 else 2,
-        magnitude=4 if top_one_day_move >= 1 else 2,
+        evidence_change=4 if unusual else 2,
+        magnitude=4 if unusual else 2,
         novelty=3, decision_usefulness=4, portfolio_relevance=4,
         confidence=confidence,
-        thesis_impact="unknown_narrowed" if top_one_day_move >= 1 else "unknown",
+        thesis_impact="unknown_narrowed" if unusual else "unknown",
         counter_explanation="价格变化可能只是 beta、流动性或报价差异，不能单独证明原因。",
         next_primary_source="交叉核验行情、官方利率数据与相关公司披露。",
         observed_value=observed_value,
@@ -841,9 +796,8 @@ def collect_market_move_candidates(
         content_hash=content_hash,
         freshness_status=freshness_status,
         freshness_threshold_days=market_freshness_threshold,
-        source_errors=source_errors,
-        next_check="Use market proxy moves only after cross-checking the quote source and matching them against rates, dollar and sector leadership.",
-        kill_signal="If quote sources are stale, unavailable, or materially inconsistent, downgrade market-action commentary.",
+        next_check="Match market proxy moves against rates, dollar and sector leadership before interpreting them.",
+        kill_signal="If the quote source is stale or unavailable, downgrade market-action commentary.",
         cannot_prove="Price movement does not prove the cause of the move.",
     )]
 

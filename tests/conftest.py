@@ -9,4 +9,3 @@ def block_network_collectors(monkeypatch):
     monkeypatch.setattr("investment_os.hard_source_collectors._safe_sec_recent", lambda: {})
     monkeypatch.setattr("investment_os.hard_source_collectors._fred_latest", lambda _series_id: None)
     monkeypatch.setattr("investment_os.hard_source_collectors._download_yfinance_snapshot", lambda _symbols: {})
-    monkeypatch.setattr("investment_os.hard_source_collectors._download_stooq_snapshot", lambda _symbols: {})

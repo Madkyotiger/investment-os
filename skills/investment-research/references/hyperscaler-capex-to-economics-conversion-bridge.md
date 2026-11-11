@@ -147,30 +147,13 @@ At minimum, test:
 - guarantees / backstops create nonperformance and excess-capacity risk;
 - management attribution is not independent customer ROI proof.
 
-## Verification and close order
+## Verification and close
 
-1. finalize source manifest dispositions and raw hashes;
-2. normalize/index the downloaded corpus;
-3. create a source-collection receipt with access gaps;
-4. write the conversion bridge with stable claim IDs and exact local anchors;
-5. run a deterministic bridge verifier that checks protected evidence strings, calculations, verdict labels and stale-state language;
-6. run Python syntax / manifest checks and advisory-boundary scan;
-7. hash final artifacts;
-8. create the final receipt;
-9. update project Current, private Brain Current and append one valid JSONL event;
-10. read back both current surfaces, parse the full event log, verify receipt-hash binding, and scan for stale `ACTIVE / unauthorized / review pending` state.
+1. Reconcile the source coverage and access gaps; preserve original files and traceable claim anchors.
+2. Recompute the bridge’s numbers from the cited values and check periods, definitions, verdict and counter-case.
+3. Use the project’s existing verifier when available. Create issuer-specific automation only for repeated work that needs it; a one-off study can be checked directly.
+4. Save the bridge and its evidence in the owning project, then update its current state. Promotion into a private knowledge base follows its own approval gate.
 
-Do not hash before the last report edit. If the verifier fails on line wrapping, normalize whitespace in the verifier rather than weakening the protected evidence check.
-
-## Minimum artifact packet
-
-```text
-research-memory/source-manifests/<wave>-<issuer>-conversion-manifest.csv
-research-memory/receipts/<wave>-<issuer>-source-collection-receipt.md
-research-memory/comparisons/<date>-<issuer>-conversion-bridge.md
-receipts/<date>-<issuer>-conversion-bridge-receipt.md
-scripts/update_<issuer>_conversion_manifest.py
-scripts/verify_<issuer>_conversion_bridge.py
-```
+The minimum deliverable is the source coverage, conversion bridge and reproducible calculations. Use the project’s existing paths and receipt format rather than creating another manifest, script or state log for each issuer.
 
 Return the verdict first, then only the decision-changing numbers, the unclosed boundary, receipt path/hash, and the next authorization gate. Logs and path inventories stay in the artifacts.

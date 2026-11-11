@@ -5,7 +5,7 @@ import json
 import math
 import tempfile
 from dataclasses import asdict, dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
@@ -13,10 +13,11 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import yaml
 
-from .spike1_research_memo import EvidenceItem
+from .evidence_contract import EvidenceItem
 
 
 A_SHARE_TIMEZONE = ZoneInfo("Asia/Shanghai")
+A_SHARE_CLOSE_SETTLED = time(15, 5)
 
 
 @dataclass(frozen=True)
@@ -296,6 +297,14 @@ def fetch_stock_price_evidence(
 
     selected[date_col] = pd.to_datetime(selected[date_col])
     selected = selected.sort_values(date_col).dropna(subset=[close_col])
+    # Before the close, today's row is a moving quote, not a close: use the last finished session.
+    local_now = generated_at.astimezone(A_SHARE_TIMEZONE)
+    if (
+        len(selected) > 1
+        and selected.iloc[-1][date_col].date() == local_now.date()
+        and local_now.time() < A_SHARE_CLOSE_SETTLED
+    ):
+        selected = selected.iloc[:-1]
     latest = selected.iloc[-1]
     latest_date = _as_date_string(latest[date_col])
     freshness = _freshness_from_date(latest_date, stale_after_days=5, reference_at=generated_at)
@@ -710,6 +719,7 @@ def render_a_share_brief(
     grouped = _evidence_by_symbol(evidence)
     candidates: list[tuple[int, str]] = []
     strong_event_symbols: set[str] = set()
+    net_buyers = net_sellers = 0
 
     for symbol in symbols:
         rows = grouped.get(symbol.code, {})
@@ -724,8 +734,10 @@ def render_a_share_brief(
                 observations.append(f"出现{data.get('events', 'n/a')}条龙虎榜机构席位记录，但金额字段不可用")
             elif amount > 0:
                 observations.append(f"龙虎榜机构席位净买入{_format_number(amount)}")
+                net_buyers += 1
             elif amount < 0:
                 observations.append(f"龙虎榜机构席位净卖出{_format_number(abs(amount))}")
+                net_sellers += 1
             else:
                 observations.append("龙虎榜机构席位净额为0")
             score += 5
@@ -775,12 +787,26 @@ def render_a_share_brief(
 
         if score > 0 and observations:
             name = symbol.name or symbol.code
-            sentence = "；".join(observations[:3]) + "。"
+            sentence = "；".join(observations) + "。"
             candidates.append((score, f"**{name}（{symbol.code}）**：{sentence}"))
 
     candidates.sort(key=lambda pair: pair[0], reverse=True)
     if strong_event_symbols:
-        judgment = f"近30天有{len(strong_event_symbols)}只标的出现可核对的观察事件，但没有显示机构形成一致方向。先看事件本身，不把成交或融资数据冒充机构净流入。"
+        # Only the institution-seat net amount carries a direction; block trades and filings do not.
+        if net_buyers and net_sellers:
+            direction = f"龙虎榜机构席位有{net_buyers}只净买入、{net_sellers}只净卖出，方向不一致。"
+        elif net_buyers + net_sellers == 1:
+            side = "净买入" if net_buyers else "净卖出"
+            direction = f"带方向的龙虎榜机构席位数据只有1只，为{side}，不足以判断机构整体方向。"
+        elif net_buyers or net_sellers:
+            side = "净买入" if net_buyers else "净卖出"
+            direction = f"有龙虎榜机构席位数据的{net_buyers + net_sellers}只均为{side}，但上榜席位不代表全部机构。"
+        else:
+            direction = "其中没有带买卖方向的龙虎榜机构席位数据，机构方向无从判断。"
+        judgment = (
+            f"近30天有{len(strong_event_symbols)}只标的出现可核对的观察事件。{direction}"
+            "先看事件本身，不把成交或融资数据冒充机构净流入。"
+        )
     else:
         judgment = "今天没有足够强的机构行为信号。价格和成交变化可以记录，但还不能据此判断机构方向。"
 
@@ -791,7 +817,7 @@ def render_a_share_brief(
     ]
     if candidates:
         lines.append("")
-        for index, (_, sentence) in enumerate(candidates[:4], start=1):
+        for index, (_, sentence) in enumerate(candidates, start=1):
             lines.append(f"{index}. {sentence}")
     lines.extend([
         "",
@@ -799,10 +825,7 @@ def render_a_share_brief(
         "",
         "本简报用于研究观察，不是交易建议。",
     ])
-    brief = "\n".join(lines)
-    if len(brief) > 1200:
-        brief = "\n".join(lines[:7] + lines[-4:])
-    return brief
+    return "\n".join(lines)
 
 
 def render_coverage_matrix(symbols: list[AShareSymbol], evidence: list[EvidenceItem]) -> str:

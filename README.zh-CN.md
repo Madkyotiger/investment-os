@@ -2,11 +2,11 @@
 
 [English](README.md)
 
-Investment OS 把市场数据和来源材料整理成研究问题、证据缺口、反方解释和短简报。它适合希望提高研究纪律，但不想把投资判断交给系统的人和 Agent。
+Investment OS 的目标：为使用者提供充足的、可能影响决策的信息——发生了什么变化、证据有多强、还缺什么、最强的反方解释是什么。最终判断由使用者自己做。
 
 这是公开评估版本：不荐股，不给仓位建议，也不执行交易。
 
-Investment OS 从设计上就是多市场系统。原有 `daily` watchlist 路径继续覆盖美股、港股、市场代理资产、宏观背景和其他已配置来源；可选的 `global-research` 组合继续保留 OpenBB、FinanceToolkit 与 SEC/EDGAR 研究能力。`a-share-daily` 只是新增的 A 股通道，不替代这些路径，也不限制以后接入其他市场或信息源。
+Investment OS 从设计上就是多市场系统。原有 `daily` watchlist 路径继续覆盖美股、港股、市场代理资产、宏观背景和其他已配置来源。`a-share-daily` 只是新增的 A 股通道，不替代这些路径，也不限制以后接入其他市场或信息源。
 
 ## 它解决什么问题
 
@@ -26,7 +26,7 @@ Investment OS 从设计上就是多市场系统。原有 `daily` watchlist 路�
 - 覆盖宏观、公司事件、主题、市场表现及中美市场的来源框架；
 - 区分来源元数据、单一来源数据、交叉核验数据和正文阅读；
 - 生成研究问题、反方解释、下一步查证来源和证伪条件；
-- 没有足够变化时保持安静的简报渲染器；
+- 简报渲染器：通过证据门槛的变化全部列出，不设固定条数；没有就保持安静；
 - 无需 Tushare Token 的 `investment-os a-share-daily`：支持 A 股个股、stock/ETF/index 分流、行情多源回退、机构持股披露、龙虎榜、大宗交易、交易所两融，以及读者简报与审计包分层；
 - 按需调用的公开专家/媒体 Catalog，以及根据主题、地区、观点角色、访问权限和数量上限生成最小抓取计划的 `source-plan`；
 - 阻止交易指令和内部过程泄漏到读者输出的边界测试。
@@ -88,7 +88,7 @@ uv run --frozen --extra china investment-os a-share-daily \
 
 AKShare 是无 Key 适配层。个股行情会从东方财富回退到新浪、腾讯，不再误走 ETF 接口。机构持股、龙虎榜和大宗交易属于便利性二手证据；沪深交易所两融数据通过适配器读取官方公开数据，但两融仍不能被写成“机构净流入”。Tushare 只是可选二源；没有 `TUSHARE_TOKEN` 不会让无 Key 路径降级。
 
-新鲜度门槛仍是 5 个自然日。A 股长假期间，`--strict` 可能在新交易日数据出现前 fail closed；系统不会把 stale 数据改标成 fresh。
+新鲜度门槛仍是 5 个自然日。A 股长假期间，`--strict` 可能在新交易日数据出现前 fail closed；系统不会把 stale 数据改标成 fresh。上海时间 15:05 前，简报用上一个已收盘交易日，不用盘中价。结论里的方向判断按龙虎榜机构席位净额逐只统计，没有方向数据时会直接说明。
 
 ## Agent 安装
 
@@ -134,7 +134,7 @@ uv run investment-os doctor --probe daily
 
 无人值守的本地运行可调用 `scripts/run_daily_local.sh`。脚本优先读取 `${XDG_CONFIG_HOME:-$HOME/.config}/investment-os/runtime.env`（也可用 `INVESTMENT_OS_ENV_FILE` 指定），没有时才回退到仓库内被忽略的 `.env`。
 
-`doctor` 会分别报告包是否 `importable`、通道是否 `configured`、实时 `live_probe` 是否成功。OpenBB、FinanceToolkit、edgartools、AKShare、Tushare 都不是美股/港股 `investment-os daily` 的必要依赖；只有 `a-share-daily` 需要 AKShare，Tushare 仍为可选。Stooq 只是 best-effort 二源：代码路径正确或 HTTP 200 都不算成功，必须实际解析出可用 CSV；否则 daily 继续标记为单一来源，不假装完成交叉核验。
+`doctor` 会分别报告包是否 `importable`、通道是否 `configured`、实时 `live_probe` 是否成功。AKShare、Tushare 都不是美股/港股 `investment-os daily` 的必要依赖；只有 `a-share-daily` 需要 AKShare，Tushare 仍为可选。`daily` 的行情只有一个来源（经 yfinance 读取 Yahoo Finance），简报里如实标为单一来源。市场条目的门槛是：单日涨跌超过该标的自身近 60 日日波动的 2 倍；日线只在交易所收盘后才算收盘价。
 
 SEC 请求需要有效身份字符串。它不是 API secret，但真实联系信息仍应只放在被忽略的本地环境文件里：
 
@@ -144,11 +144,11 @@ export SEC_EDGAR_IDENTITY="Your Name your-email@example.com"
 
 ## 可选依赖组合
 
-公开的 lockfile 把实时行情、全球研究数据商和中国数据商拆成独立组合。下面的命令只安装到临时隔离环境，不会扩大项目 `.venv`：
+公开的 lockfile 把实时行情和中国数据商拆成独立组合。下面的命令只安装到临时隔离环境，不会扩大项目 `.venv`：
 
 ```bash
 uv run --no-project python scripts/verify_dependency_profiles.py market
-uv run --no-project python scripts/verify_dependency_profiles.py global-research china
+uv run --no-project python scripts/verify_dependency_profiles.py china
 ```
 
 这些检查只验证 lockfile 和必要包能否正常导入，不请求实时数据。第一次运行可能需要下载依赖，之后由 `uv` 缓存加速。
@@ -190,7 +190,7 @@ uv run python scripts/public_release_guard.py
 
 ## 当前状态
 
-`0.2.1` 保留 `0.2.0` 的无 Key A 股路径，并修复 UTC 换日边界的新鲜度判断：现在以调用方显式运行时间对应的 Asia/Shanghai 市场日期为准。它适合安装和真人复核评估，不适合无人值守生产运行。定时运行和下游分发由外部运行时负责，不在本仓库范围内。
+`0.2.2` 修复了联网 `daily` 路径（此前只要月度宏观数据进入简报就会中止且不出稿）；达标的变化全部列出，不再只取前 5 条；市场条目按每只标的自身波动判断，并且只用已收盘的交易日；早期试验模块和 `global-research` 依赖组合已下线。它适合安装和真人复核评估，不适合无人值守生产运行。定时运行和下游分发由外部运行时负责，不在本仓库范围内。
 
 ## License
 

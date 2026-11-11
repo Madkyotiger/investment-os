@@ -48,7 +48,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        profile: [global-research, china]
+        profile: [china]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

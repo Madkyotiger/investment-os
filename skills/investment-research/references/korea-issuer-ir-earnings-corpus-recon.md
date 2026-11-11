@@ -140,5 +140,4 @@ Use as calibration, not as a permanent fact pack without re-check:
 - US path: `issuer-ir-sec-earnings-corpus-recon.md`
 - NVIDIA-specific IR/SEC quirks: `nvidia-ir-sec-source-recon-pattern.md`
 - Collection contract: `anchor-network-source-collection-contract.md`
-- Document-level provenance: skill `research-corpus-provenance`
-- Public/mirrored research access labels: skill `public-research-source-audit`
+- Document-level provenance and public/gated/mirrored access labels: record them per document in the owning project; no separate skill is required.

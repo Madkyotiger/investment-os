@@ -56,10 +56,10 @@ Depth is earned by a better comparison and a nearer decision, not by length. Avo
 
 - Keep buy/sell/hold, position, target price and execution advice out of the reader surface.
 - Preserve original source links; keep paths, claim IDs, receipts and source counts backstage.
-- Run anti-AI-writing before formal delivery.
+- The artifact author proofreads before formal delivery, preserving facts, evidence labels, claims, and edit scope.
 - For cloud delivery, create under the user-owned folder and read back title, numbers, links, actions and falsifiers.
 - Ask for short reader feedback: whether history added value, the piece was too long or too technical, and whether the action became clearer.
 
 ## 6. Relationship to Product A pilots
 
-A finite A pilot may run on a schedule when the user explicitly asks for a multi-day test. Its contract should be zero to four qualified items, cross-day deduplication, no quota filling, and an explicit stop after the agreed runs. Keep the legacy job paused; create a clean pilot job rather than repurposing a stale prompt. Product A may surface a B candidate, but it must not auto-publish Product B.
+A finite A pilot may run on a schedule when the user explicitly asks for a multi-day test. Its contract should be all qualified material items without a numeric cap, cross-day deduplication, no quota filling, and an explicit stop after the agreed runs. Keep the legacy job paused; create a clean pilot job rather than repurposing a stale prompt. Product A may surface a B candidate, but it must not auto-publish Product B.

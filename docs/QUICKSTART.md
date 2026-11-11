@@ -27,7 +27,7 @@ Expected result: exit `0` and `daily_run=completed`. Offline mode is determinist
 
 The completed output contains:
 
-- `cxo_daily_brief.md`: maximum five changed, evidence-gated reader items;
+- `cxo_daily_brief.md`: every changed, evidence-gated reader item, with no fixed count;
 - `source_receipt.json`: source URL, source/retrieval dates, evidence/freshness state, content hash, and promotion decision;
 - `manifest.json`: completed/quiet result, source successes/failures, item counts, paths, and artifact hashes;
 - `run_state.json`: run result, input fingerprint, meaningful-change count, and promoted IDs;
@@ -54,7 +54,7 @@ Expected: exit `0`, `daily_run=quiet`, zero promoted IDs, and quiet wording in t
 
 ## Live collection and strict semantics
 
-Omit `--offline` to use the existing public SEC, FRED, yfinance, and Stooq collectors:
+Omit `--offline` to use the public SEC, FRED, and yfinance collectors:
 
 ```bash
 uv run investment-os daily \
@@ -67,7 +67,7 @@ uv run investment-os daily \
 
 Live collection fails closed and never substitutes synthetic observations. In strict mode, exit `2` means every fresh usable live source failed; a successfully fetched observation outside its configured cadence/staleness window is not usable. `configs/macro_series.yaml` defines each FRED series' freshness and material-change thresholds, plus a five-calendar-day market snapshot threshold so weekends/holidays can remain current without accepting arbitrarily old closes. This config is bundled as package data and used automatically when the checkout-relative file is unavailable. A blocked source target, metadata-only filing, or one failed source does not fail strict mode when another fresh usable live source succeeded. A successful collection may still return `quiet` when no changed promotable item exists.
 
-SEC requests should use `SEC_EDGAR_IDENTITY` in the environment. Do not put a real contact identity in tracked files. For a recurring runtime, install `market` once, load an ignored `.env`, then run `investment-os doctor --probe daily`. The probe distinguishes importability, configuration, and live channel health; Stooq remains best-effort and never upgrades a market row unless usable same-date data is parsed.
+SEC requests should use `SEC_EDGAR_IDENTITY` in the environment. Do not put a real contact identity in tracked files. For a recurring runtime, install `market` once, load an ignored `.env`, then run `investment-os doctor --probe daily`. The probe distinguishes importability, configuration, and live channel health. Market prices come from one source and are labelled single-source.
 
 ## Current gaps
 

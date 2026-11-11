@@ -17,7 +17,72 @@ from .judgment_kernel import evidence_fingerprint, is_promotable
 from .macro_sources import load_macro_series
 from .source_universe_intake import SourceCandidate, rank_source_candidates
 from .topic_state import TopicChange, parse_generated_at
-from .us_china_pilot import scan_boundary, scan_external_note_quality
+
+FORBIDDEN_REPORT_PHRASES = [
+    "建议买入",
+    "建议卖出",
+    "建议持有",
+    "建议加仓",
+    "建议减仓",
+    "目标收益",
+    "自动下单",
+    "recommend buy",
+    "recommend sell",
+    "recommend hold",
+]
+
+EXTERNAL_NOTE_FORBIDDEN_PHRASES = FORBIDDEN_REPORT_PHRASES + [
+    "买入",
+    "卖出",
+    "持有",
+    "加仓",
+    "减仓",
+    "清仓",
+    "recommendation to buy",
+    "recommendation to sell",
+    "recommendation to hold",
+    "position sizing",
+]
+
+EXTERNAL_NOTE_HYPE_PHRASES = [
+    "10倍",
+    "20倍",
+    "10x",
+    "20x",
+    "韭菜",
+    "收割",
+    "跟着机构",
+    "爆发机会",
+    "确定性机会",
+    "guaranteed upside",
+    "sure thing",
+    "follow smart money",
+]
+
+EXTERNAL_NOTE_FORBIDDEN_MARKERS = [
+    "/mnt/",
+    ".cache",
+    "uv run",
+    "scripts/",
+    "reports/us-china-pilot",
+    "local DataOS",
+    "info_cache=",
+    "markdown_cache=",
+    "sections_cache=",
+]
+
+
+def scan_external_note_quality(text: str) -> dict[str, int]:
+    lower_text = text.lower()
+    result = {f"decision:{phrase}": lower_text.count(phrase.lower()) for phrase in EXTERNAL_NOTE_FORBIDDEN_PHRASES}
+    result.update({f"hype:{phrase}": lower_text.count(phrase.lower()) for phrase in EXTERNAL_NOTE_HYPE_PHRASES})
+    result.update({f"leak:{marker}": lower_text.count(marker.lower()) for marker in EXTERNAL_NOTE_FORBIDDEN_MARKERS})
+    return result
+
+
+def scan_boundary(text: str) -> dict[str, int]:
+    lower_text = text.lower()
+    return {phrase: lower_text.count(phrase.lower()) for phrase in FORBIDDEN_REPORT_PHRASES}
 
 
 @dataclass
@@ -157,7 +222,7 @@ def score_cxo_relevance(candidate: SourceCandidate, profile: CXOProfile) -> tupl
 def build_cxo_brief_items(
     candidates: list[SourceCandidate],
     profile: CXOProfile,
-    max_items: int = 5,
+    max_items: int | None = None,
     topic_changes: list[TopicChange] | None = None,
 ) -> list[CXOBriefItem]:
     meaningful_ids: set[str] | None = None
@@ -191,7 +256,7 @@ def build_cxo_brief_items(
         seen_theses.add(candidate.thesis_key)
         seen_fingerprints.add(fingerprint)
         items.append(CXOBriefItem(candidate=candidate, cxo_relevance=relevance, cxo_reason=reason))
-    return sorted(
+    ranked = sorted(
         items,
         key=lambda item: (
             item.cxo_relevance,
@@ -201,7 +266,9 @@ def build_cxo_brief_items(
             item.candidate.portfolio_relevance,
         ),
         reverse=True,
-    )[: min(max_items, 5)]
+    )
+    # Every qualifying change reaches the reader; a caller may still ask for fewer.
+    return ranked[:max_items] if max_items else ranked
 
 
 def render_coverage_receipt(
@@ -299,8 +366,8 @@ TEXT_REPLACEMENTS = {
     " at ": "，单日 ",
     " on ": " 日期 ",
     "metadata": "元数据",
-    "Use market proxy moves only after cross-checking the quote source and matching them against rates, dollar and sector leadership": "先做行情二源校验，再和利率、美元、行业强弱一起看",
-    "If quote sources are stale, unavailable, or materially inconsistent, downgrade market-action commentary": "如果行情源过期、不可用，或二源明显不一致，就降级市场动作解读",
+    "Match market proxy moves against rates, dollar and sector leadership before interpreting them": "先和利率、美元、行业强弱一起看，再解读行情变化",
+    "If the quote source is stale or unavailable, downgrade market-action commentary": "如果行情源过期或不可用，就降级市场动作解读",
     "Price movement does not prove the cause of the move": "价格变化不能证明变化原因",
 }
 
@@ -408,7 +475,7 @@ def render_cxo_brief(
         "single_source_data": "单源数据",
     }
     freshness_labels = {"current": "当前", "stale": "过期"}
-    for item in items[:5]:
+    for item in items:
         cand = item.candidate
         title = _zh(cand.title).rstrip("。.")
         summary = _clip_at_clause(_plain_summary(cand)).rstrip("。.")
@@ -547,7 +614,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--profile-id", default="founder_operator")
     parser.add_argument("--topic-changes", type=Path, default=None)
     parser.add_argument("--out", type=Path, default=Path("reports/cxo-intelligence"))
-    parser.add_argument("--max-items", type=int, default=5)
+    parser.add_argument("--max-items", type=int, default=None)
     parser.add_argument("--generated-at", default="", help="ISO timestamp for reproducible historical samples.")
     args = parser.parse_args(argv)
 

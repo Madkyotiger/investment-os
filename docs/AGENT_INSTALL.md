@@ -80,10 +80,10 @@ To check optional package profiles without calling providers:
 
 ```bash
 uv run --no-project python scripts/verify_dependency_profiles.py market
-uv run --no-project python scripts/verify_dependency_profiles.py global-research china
+uv run --no-project python scripts/verify_dependency_profiles.py china
 ```
 
-SEC requests need `SEC_EDGAR_IDENTITY` in the environment. Tushare needs `TUSHARE_TOKEN` only when its optional second-source connector is enabled. Never put either real value in the repository. Package-profile import checks do not prove provider health; use `uv run --frozen --extra market investment-os doctor --probe daily` for the US/HK daily channels and `uv run --frozen --extra china investment-os doctor --probe china-keyless` for A shares. Stooq is best-effort and may remain unavailable even when its adapter code is installed.
+SEC requests need `SEC_EDGAR_IDENTITY` in the environment. Tushare needs `TUSHARE_TOKEN` only when its optional second-source connector is enabled. Never put either real value in the repository. Package-profile import checks do not prove provider health; use `uv run --frozen --extra market investment-os doctor --probe daily` for the US/HK daily channels and `uv run --frozen --extra china investment-os doctor --probe china-keyless` for A shares.
 
 ## Clean removal
 

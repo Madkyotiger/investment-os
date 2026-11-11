@@ -19,16 +19,13 @@ def test_doctor_distinguishes_package_imports_from_connector_readiness(monkeypat
     assert "contact@example.com" not in output
 
 
-def test_doctor_can_probe_daily_connectors_without_turning_best_effort_stooq_into_a_pass(
-    monkeypatch, capsys
-):
+def test_doctor_reports_daily_ready_only_when_every_required_connector_answers(monkeypatch, capsys):
     monkeypatch.setattr(
         "investment_os.cli._probe_daily_connectors",
         lambda: {
             "yfinance": "available",
             "sec": "available",
             "fred": "available",
-            "stooq": "unavailable",
         },
         raising=False,
     )
@@ -36,9 +33,8 @@ def test_doctor_can_probe_daily_connectors_without_turning_best_effort_stooq_int
     assert main(["doctor", "--probe", "daily"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
-    assert payload["daily_readiness"] == "ready_with_degraded_cross_check"
-    assert payload["connectors"]["stooq"]["live_probe"] == "unavailable"
-    assert payload["connectors"]["stooq"]["required_for_daily"] is False
+    assert payload["daily_readiness"] == "ready"
+    assert "stooq" not in payload["connectors"]
 
 
 def test_doctor_china_keyless_is_ready_without_tushare_token(monkeypatch, capsys):

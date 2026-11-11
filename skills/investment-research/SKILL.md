@@ -1,14 +1,14 @@
 ---
 name: investment-research
 description: "Routes and executes evidence-first investment research across quick market questions, Daily Scan, cross-market wrap, A-share institutional observation, triggered deep reads, named issuer studies, source audits, and reusable research systems. Use for source-backed market research, watchlists, filings, data pipelines, evidence ledgers, longitudinal analysis, portfolio-risk review, or reader briefs. Do NOT use for buy/sell/hold calls, position sizing, target prices, brokerage execution, return promises, or regulated investment advice."
-version: 2.3.3
+version: 2.3.4
 author: Hermes Agent
 license: MIT
 compatibility: hermes
 metadata:
   hermes:
     tags: [investment-research, finance, data-pipeline, advisory-boundary, portfolio-risk, multi-market]
-    related_skills: [github-operations, software-development-lifecycle, current-state-docs, financial-content-benchmarking]
+    related_skills: [github-operations, software-development-lifecycle]
 ---
 
 # Investment Research
@@ -36,7 +36,7 @@ Use when the user asks to:
 
 Do **not** use to choose securities for the user, recommend buy/sell/hold, set position size, give target prices, connect brokerage execution, promise returns, or disguise advice as a score. Reframe those requests into comparative evidence, risks, assumptions, falsifiers, and research actions while leaving the decision with the user.
 
-Pure financial-news editorial benchmarking belongs to `financial-content-benchmarking`. Generic repository operations belong to `github-operations`; implementation follows `software-development-lifecycle`, and reproducible failures follow `systematic-debugging` when available.
+Pure financial-news editorial benchmarking is outside this skill. Generic repository operations belong to `github-operations`; implementation follows `software-development-lifecycle`, and reproducible failures follow `systematic-debugging` when available.
 
 ## Universal Invariants
 
@@ -57,7 +57,7 @@ Choose one primary route. If the request carries several needs, preserve the rea
 | Route | Default surface | Use when | Output default |
 |---|---|---|---|
 | `quick-answer` | `reader-chat` | A bounded current fact, mechanism, or “what matters now?” question | Useful conclusion first; exact as-of; essential evidence, uncertainty, and original links or supplied source IDs; normally one phone screen. |
-| `daily-scan` | `reader-brief` | Broad current browsing across a defined universe | Zero to four qualified changes; no quota filling; one worthwhile research action; silence is valid. |
+| `daily-scan` | `reader-brief` | Broad current browsing across a defined universe | All qualified material changes, without a hard maximum or minimum; no quota filling; research actions stay specific; silence is valid. |
 | `cross-market-wrap` | `reader-brief` | A/H/US or another multi-market comparison | Organize around cross-market mechanisms, not parallel news dumps; same-day co-movement is not causal proof; call a shared driver only when exposure and transmission evidence support it. |
 | `a-share-institutional` | `reader-plus-audit` | A-share watchlist or institutional-observation signals | Reader brief first; ledger, coverage matrix, and source receipt remain available as the Audit surface. |
 | `triggered-deep-read` | `reader-deep-read` | A current event materially changes a tracked question | Current delta → historical prior → changed mechanism → path to next material event → falsifier and research action. |
@@ -67,7 +67,7 @@ Choose one primary route. If the request carries several needs, preserve the rea
 | `system-debug` | `engineer-receipt` | A connector, endpoint, parser, schema, freshness gate, or run fails | Reproduce, diagnose, repair narrowly, execute again, and report the verified result. |
 | `boundary-refusal` | `refuse-and-reroute` | The user asks for a trade decision, position, target, return promise, or execution | Refuse categorically; never imply that more or better data would authorize the agent to choose; offer evidence comparison or research questions instead. |
 | `blocked-source` | `evidence-gap` | A decision-relevant source cannot be read or a required fact remains unavailable | Name the exact access/evidence gap, try an allowed authoritative/readable route, and bound the conclusion. |
-| `client-safe` | `forwardable-brief` | Existing research must become safe to share with a friend, client, or external reader | Remove private/system residue; preserve facts, caveats, and the fixed decision-boundary disclaimer; run `anti-ai-writing` final-language QA. |
+| `client-safe` | `forwardable-brief` | Existing research must become safe to share with a friend, client, or external reader | Remove private/system residue; preserve facts, caveats, and the fixed decision-boundary disclaimer; have the artifact author check the final wording. |
 
 ### Audience and multi-need rules
 
@@ -117,7 +117,7 @@ The Audit surface does not replace the reader product. For A-share institutional
 ### Mode-specific minimums
 
 - `quick-answer`: conclusion, as-of, 1–3 decisive facts, uncertainty, and traceable source links or supplied source IDs.
-- `daily-scan`: zero to four changes; what deserves attention; one research/monitoring action. No repeated-theme quota.
+- `daily-scan`: all qualified material changes, without a hard maximum or minimum; what deserves attention and the next decisive research variable. No repeated-theme quota.
 - `cross-market-wrap`: candidate mechanism, market-specific confirmation or contradiction, explicit non-causality for same-day co-movement, coverage boundary, next variable. When exposure and transmission evidence are missing, use “candidate mechanism,” “possible mapping,” or “co-movement”; do not describe the event as driving, catalyzing, causing, or leading the market move.
 - `a-share-institutional`: observed signal, why it may matter, inference limit, next confirmation; audit stays optional.
 - `triggered-deep-read`: genuinely new delta, prior state, next-event path, observable falsifier.
@@ -134,7 +134,7 @@ Use this fixed Chinese disclaimer for Chinese forwardable output; translate it w
 
 > 本报告只用于信息整理、研究讨论和风险提示，不构成投资建议、交易建议或收益承诺。市场有风险，任何交易决策应由使用者基于自己的风险承受能力、资金期限、税务/法律情况和独立判断作出。报告中的数据可能延迟、缺失或有误，请在行动前自行核验。
 
-Formal, reusable, or forwardable prose gets `anti-ai-writing` QA after facts and structure are locked. Never add vividness, certainty, examples, or claims that the evidence did not earn.
+The artifact author checks formal, reusable, or forwardable prose after facts and structure are locked. Never add vividness, certainty, examples, or claims that the evidence did not earn.
 
 ## Evidence and Source Gate
 

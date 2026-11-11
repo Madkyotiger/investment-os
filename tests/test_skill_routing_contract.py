@@ -70,7 +70,7 @@ def test_routing_fixture_is_complete_and_unambiguous() -> None:
 def test_skill_exposes_every_fixture_route_and_output_contract() -> None:
     text = SKILL_FILE.read_text(encoding="utf-8")
     metadata = _frontmatter(text)
-    assert metadata["version"] == "2.3.3"
+    assert metadata["version"] == "2.3.4"
 
     for case in _cases():
         route = case["expected_route"]
@@ -86,7 +86,7 @@ def test_skill_exposes_every_fixture_route_and_output_contract() -> None:
         "brief first",
         "not found in this scan",
         "no event occurred",
-        "anti-ai-writing",
+        "artifact author",
         "Refuse categorically",
         "refusal based on authority boundary, never on missing data",
         "traceable source links or supplied source IDs",

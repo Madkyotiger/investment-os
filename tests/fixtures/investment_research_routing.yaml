@@ -16,7 +16,7 @@ cases:
   expected_surface: reader-brief
   must_do:
   - use an exact interval and current-source gate
-  - publish zero to four qualified changes and allow silence
+  - publish every qualified material change with no fixed count and allow silence
   - keep source receipts and system internals backstage
   must_not_do:
   - fill a quota with repeated themes

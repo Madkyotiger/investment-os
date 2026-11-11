@@ -136,7 +136,7 @@ def run_demo(out_dir: Path) -> int:
         relevance_keywords=["AI", "margin", "earnings", "Fed", "rates"],
     )
     candidates = _demo_candidates()
-    items = build_cxo_brief_items(candidates, profile, max_items=5)
+    items = build_cxo_brief_items(candidates, profile)
     brief_path, ranked_path, quality_path = write_cxo_outputs(
         items,
         profile,
@@ -162,9 +162,6 @@ def run_demo(out_dir: Path) -> int:
 
 OPTIONAL_PACKAGE_USAGE = {
     "yfinance": ["run", "daily"],
-    "openbb": ["optional_global_research_spike"],
-    "financetoolkit": ["optional_global_research_spike"],
-    "edgar": ["optional_complex_filing_research"],
     "akshare": ["a-share-daily", "optional_china_research"],
     "tushare": ["optional_china_second_source"],
 }
@@ -172,7 +169,6 @@ OPTIONAL_PACKAGE_USAGE = {
 
 def _probe_daily_connectors() -> dict[str, str]:
     from .hard_source_collectors import (
-        _download_stooq_snapshot,
         _download_yfinance_snapshot,
         _fred_latest,
         _safe_sec_recent,
@@ -187,7 +183,6 @@ def _probe_daily_connectors() -> dict[str, str]:
     statuses = {
         "yfinance": probe(lambda: bool(_download_yfinance_snapshot(["SPY"]))),
         "fred": probe(lambda: _fred_latest("DGS10") is not None),
-        "stooq": probe(lambda: bool(_download_stooq_snapshot(["SPY"]))),
     }
     statuses["sec"] = (
         probe(lambda: bool(_safe_sec_recent()))
@@ -247,13 +242,6 @@ def run_doctor(probe_target: str | None = None) -> int:
             "used_by": ["daily"],
             "live_probe": "not_run",
         },
-        "stooq": {
-            "adapter_installed": True,
-            "configured": True,
-            "required_for_daily": False,
-            "used_by": ["daily_cross_check"],
-            "live_probe": "not_run",
-        },
         "akshare": {
             "adapter_installed": optional_packages["akshare"]["importable"],
             "configured": optional_packages["akshare"]["importable"],
@@ -277,12 +265,7 @@ def run_doctor(probe_target: str | None = None) -> int:
             connectors[name]["live_probe"] == "available"
             for name in ("yfinance", "sec", "fred")
         )
-        if not required_ready:
-            daily_readiness = "degraded"
-        elif connectors["stooq"]["live_probe"] == "available":
-            daily_readiness = "ready"
-        else:
-            daily_readiness = "ready_with_degraded_cross_check"
+        daily_readiness = "ready" if required_ready else "degraded"
     else:
         daily_readiness = (
             "configured"

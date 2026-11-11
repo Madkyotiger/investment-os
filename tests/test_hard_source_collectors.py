@@ -1,7 +1,9 @@
 import json
 import types
 import builtins
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+
+from investment_os.cxo_intelligence import _zh
 from pathlib import Path
 
 import pytest
@@ -9,9 +11,8 @@ import pytest
 from investment_os.evidence_contract import normalize_evidence_status
 from investment_os.hard_source_collectors import (
     HardSourceCandidate,
-    _download_stooq_snapshot,
     _download_yfinance_snapshot,
-    _stooq_symbol,
+    _session_is_complete,
     get_last_source_errors,
     collect_fred_yield_candidates,
     collect_hard_source_candidates,
@@ -108,51 +109,25 @@ def test_fred_config_falls_back_to_bundled_package_data_outside_checkout(monkeyp
 def test_market_move_candidate_can_be_built_from_snapshot(monkeypatch):
     def fake_snapshot(symbols: list[str]):
         return {
-            "SPY": {"date": "2026-07-07", "close": 620.0, "one_day_pct": 0.2, "sixty_day_pct": 8.0},
-            "QQQ": {"date": "2026-07-07", "close": 560.0, "one_day_pct": 1.4, "sixty_day_pct": 12.0},
+            "SPY": {"date": "2026-07-07", "close": 620.0, "one_day_pct": 0.2, "sixty_day_pct": 8.0, "daily_vol_pct": 0.8},
+            "QQQ": {"date": "2026-07-07", "close": 560.0, "one_day_pct": 1.4, "sixty_day_pct": 12.0, "daily_vol_pct": 0.6},
         }
 
     monkeypatch.setattr("investment_os.hard_source_collectors._download_yfinance_snapshot", fake_snapshot)
-    monkeypatch.setattr("investment_os.hard_source_collectors._download_stooq_snapshot", fake_snapshot)
     candidates = collect_market_move_candidates({"market_proxies": ["SPY", "QQQ"]}, datetime(2026, 7, 8, tzinfo=timezone.utc))
 
     assert candidates[0].source_type == "market_proxy_prices_live"
-    assert candidates[0].confidence == "market_data_cross_checked"
+    assert candidates[0].confidence == "market_data_probable"
+    assert candidates[0].evidence_status == "single_source_data"
     assert candidates[0].tickers == "SPY,QQQ"
-    assert "QQQ" in candidates[0].title
-    assert "Stooq" in candidates[0].summary
+    assert candidates[0].title == "QQQ 单日 1.4%，约为自身近60日日波动的 2.3 倍"
+    assert "单源" in candidates[0].summary
     assert candidates[0].retrieved_at == "2026-07-08T00:00:00+00:00"
     assert candidates[0].thesis_impact == "unknown_narrowed"
     observed = json.loads(candidates[0].observed_value)
-    assert set(observed) == {"primary_yfinance", "secondary_stooq"}
+    assert set(observed) == {"primary_yfinance"}
     assert candidates[0].content_hash.startswith("sha256:")
     assert candidates[0].freshness_threshold_days == 5
-
-
-def test_stooq_symbol_mapping_preserves_exchange_and_never_creates_hk_us_hybrid():
-    assert _stooq_symbol("SPY") == "spy.us"
-    assert _stooq_symbol("0700.HK") == "700.hk"
-    assert _stooq_symbol("0005.hk") == "5.hk"
-    assert _stooq_symbol("510300.SS") is None
-    assert _stooq_symbol("510300") is None
-
-
-def test_stooq_html_challenge_is_a_visible_source_failure(monkeypatch):
-    before = len(get_last_source_errors())
-    monkeypatch.setattr(
-        "investment_os.hard_source_collectors._http_text",
-        lambda _url, timeout=10: "<html><body>This site requires JavaScript to verify your browser.</body></html>",
-    )
-
-    assert _download_stooq_snapshot(["0700.HK"]) == {}
-    errors = get_last_source_errors()[before:]
-
-    assert errors
-    assert errors[-1]["source"] == "Stooq"
-    assert errors[-1]["code"] == "invalid_response"
-    assert errors[-1]["affected_count"] == 1
-    assert "700.hk" in str(errors[-1]["source_url"])
-    assert "0700.hk.us" not in str(errors[-1]["source_url"])
 
 
 def test_market_daily_collects_us_and_hk_watchlist_symbols_not_only_proxies(monkeypatch):
@@ -166,7 +141,6 @@ def test_market_daily_collects_us_and_hk_watchlist_symbols_not_only_proxies(monk
         }
 
     monkeypatch.setattr("investment_os.hard_source_collectors._download_yfinance_snapshot", fake_primary)
-    monkeypatch.setattr("investment_os.hard_source_collectors._download_stooq_snapshot", fake_primary)
 
     candidate = collect_market_move_candidates(
         {
@@ -184,10 +158,10 @@ def test_market_daily_collects_us_and_hk_watchlist_symbols_not_only_proxies(monk
         },
     )[0]
 
-    assert captured == ["SPY", "NVDA", "0700.HK", "SPY", "NVDA", "0700.HK"]
+    assert captured == ["SPY", "NVDA", "0700.HK"]
     assert candidate.tickers == "SPY,NVDA,0700.HK"
     assert "510300" not in candidate.tickers
-    assert candidate.title.startswith("市场观察名单单日波动由")
+    assert candidate.title == "市场观察名单单日波动均在各自常态范围内"
 
 
 def test_market_move_candidate_uses_configured_snapshot_freshness(monkeypatch):
@@ -195,7 +169,6 @@ def test_market_move_candidate_uses_configured_snapshot_freshness(monkeypatch):
         "SPY": {"date": "2026-06-01", "close": 620.0, "one_day_pct": 1.2, "sixty_day_pct": 8.0},
     }
     monkeypatch.setattr("investment_os.hard_source_collectors._download_yfinance_snapshot", lambda _symbols: snapshot)
-    monkeypatch.setattr("investment_os.hard_source_collectors._download_stooq_snapshot", lambda _symbols: snapshot)
 
     candidate = collect_market_move_candidates(
         {"market_proxies": ["SPY"]}, datetime(2026, 7, 8, tzinfo=timezone.utc)
@@ -212,7 +185,6 @@ def test_market_numeric_revision_changes_structured_evidence_but_unchanged_snaps
         "QQQ": {"date": "2026-07-07", "close": 560.0, "one_day_pct": 1.4, "sixty_day_pct": 12.0},
     }
     monkeypatch.setattr("investment_os.hard_source_collectors._download_yfinance_snapshot", lambda _symbols: snapshot)
-    monkeypatch.setattr("investment_os.hard_source_collectors._download_stooq_snapshot", lambda _symbols: snapshot)
 
     first = collect_market_move_candidates(
         {"market_proxies": ["SPY", "QQQ"]}, datetime(2026, 7, 8, tzinfo=timezone.utc)
@@ -240,7 +212,6 @@ def test_subthreshold_market_snapshot_does_not_claim_to_narrow_the_research_unkn
         "SPY": {"date": "2026-07-07", "close": 620.0, "one_day_pct": 0.2, "sixty_day_pct": 8.0},
     }
     monkeypatch.setattr("investment_os.hard_source_collectors._download_yfinance_snapshot", lambda _symbols: snapshot)
-    monkeypatch.setattr("investment_os.hard_source_collectors._download_stooq_snapshot", lambda _symbols: snapshot)
 
     candidate = collect_market_move_candidates(
         {"market_proxies": ["SPY"]}, datetime(2026, 7, 8, tzinfo=timezone.utc)
@@ -249,70 +220,11 @@ def test_subthreshold_market_snapshot_does_not_claim_to_narrow_the_research_unkn
     assert candidate.thesis_impact == "unknown"
 
 
-def test_conflicting_market_sources_are_explicitly_mixed(monkeypatch):
-    monkeypatch.setattr(
-        "investment_os.hard_source_collectors._download_yfinance_snapshot",
-        lambda _symbols: {"SPY": {"date": "2026-07-07", "close": 100.0, "one_day_pct": 1.0, "sixty_day_pct": 2.0}},
-    )
-    monkeypatch.setattr(
-        "investment_os.hard_source_collectors._download_stooq_snapshot",
-        lambda _symbols: {"SPY": {"date": "2026-07-07", "close": 80.0, "one_day_pct": 1.0, "sixty_day_pct": 2.0}},
-    )
-    candidate = collect_market_move_candidates(
-        {"market_proxies": ["SPY"]}, datetime(2026, 7, 8, tzinfo=timezone.utc)
-    )[0]
-    assert candidate.evidence_status == "mixed_sources"
-    assert candidate.source_errors
-
-
-def test_market_cross_check_accepts_exact_three_percent_close_boundary(monkeypatch):
-    primary = {
-        "SPY": {"date": "2026-07-07", "close": 103.0, "one_day_pct": 1.0, "sixty_day_pct": 2.0},
-    }
-    secondary = {
-        "SPY": {"date": "2026-07-07", "close": 100.0, "one_day_pct": 1.0, "sixty_day_pct": 2.0},
-    }
-    monkeypatch.setattr("investment_os.hard_source_collectors._download_yfinance_snapshot", lambda _symbols: primary)
-    monkeypatch.setattr("investment_os.hard_source_collectors._download_stooq_snapshot", lambda _symbols: secondary)
-
-    candidate = collect_market_move_candidates(
-        {"market_proxies": ["SPY"]}, datetime(2026, 7, 8, tzinfo=timezone.utc)
-    )[0]
-
-    assert candidate.confidence == "market_data_cross_checked"
-    assert candidate.evidence_status == "cross_checked_data"
-
-
-def test_partial_market_cross_check_never_claims_full_basket_verification(monkeypatch):
-    primary = {
-        "SPY": {"date": "2026-07-07", "close": 620.0, "one_day_pct": 0.2, "sixty_day_pct": 8.0},
-        "QQQ": {"date": "2026-07-07", "close": 560.0, "one_day_pct": 1.4, "sixty_day_pct": 12.0},
-    }
-    secondary = {
-        "SPY": {"date": "2026-07-07", "close": 620.0, "one_day_pct": 0.2, "sixty_day_pct": 8.0},
-    }
-    monkeypatch.setattr("investment_os.hard_source_collectors._download_yfinance_snapshot", lambda _symbols: primary)
-    monkeypatch.setattr("investment_os.hard_source_collectors._download_stooq_snapshot", lambda _symbols: secondary)
-
-    candidate = collect_market_move_candidates(
-        {"market_proxies": ["SPY", "QQQ"]}, datetime(2026, 7, 8, tzinfo=timezone.utc)
-    )[0]
-
-    assert candidate.confidence == "market_data_probable"
-    assert candidate.evidence_status == "single_source_data"
-    assert "1/2" in candidate.summary
-    assert "QQQ" in candidate.summary
-
-
-def test_missing_primary_market_symbol_cannot_claim_full_basket_verification(monkeypatch):
+def test_market_symbol_missing_from_the_quote_source_is_named_to_the_reader(monkeypatch):
     primary = {
         "SPY": {"date": "2026-07-07", "close": 620.0, "one_day_pct": 1.2, "sixty_day_pct": 8.0},
     }
-    secondary = {
-        "SPY": {"date": "2026-07-07", "close": 619.0, "one_day_pct": 1.1, "sixty_day_pct": 7.8},
-    }
     monkeypatch.setattr("investment_os.hard_source_collectors._download_yfinance_snapshot", lambda _symbols: primary)
-    monkeypatch.setattr("investment_os.hard_source_collectors._download_stooq_snapshot", lambda _symbols: secondary)
 
     candidate = collect_market_move_candidates(
         {"market_proxies": ["SPY", "QQQ"]}, datetime(2026, 7, 8, tzinfo=timezone.utc)
@@ -321,26 +233,7 @@ def test_missing_primary_market_symbol_cannot_claim_full_basket_verification(mon
     assert candidate.confidence == "market_data_probable"
     assert candidate.evidence_status == "single_source_data"
     assert candidate.tickers == "SPY"
-    assert "QQQ" in candidate.summary
-
-
-def test_market_cross_check_requires_the_same_observation_date(monkeypatch):
-    primary = {
-        "SPY": {"date": "2026-07-07", "close": 620.0, "one_day_pct": 1.2, "sixty_day_pct": 8.0},
-    }
-    secondary = {
-        "SPY": {"date": "2026-06-30", "close": 620.0, "one_day_pct": 1.2, "sixty_day_pct": 8.0},
-    }
-    monkeypatch.setattr("investment_os.hard_source_collectors._download_yfinance_snapshot", lambda _symbols: primary)
-    monkeypatch.setattr("investment_os.hard_source_collectors._download_stooq_snapshot", lambda _symbols: secondary)
-
-    candidate = collect_market_move_candidates(
-        {"market_proxies": ["SPY"]}, datetime(2026, 7, 8, tzinfo=timezone.utc)
-    )[0]
-
-    assert candidate.confidence == "market_data_mixed"
-    assert candidate.evidence_status == "mixed_sources"
-    assert "date" in candidate.summary
+    assert candidate.summary.startswith("主行情缺少 QQQ。")
 
 
 def test_hard_source_rows_include_retrieval_and_body_contract_fields():
@@ -608,3 +501,76 @@ def test_sec_form4_metadata_does_not_block_newer_business_filing_body(monkeypatc
     assert body.accession_number == "0001-08-01"
     assert requested_urls and requested_urls[0].endswith("/event.htm")
     assert "form4.xml" not in json.dumps(body.to_row())
+
+
+def test_market_move_is_judged_against_each_symbols_own_volatility(monkeypatch):
+    # NVDA moves 3% on an ordinary day for NVDA; TLT moves 1.3% on an unusual day for TLT.
+    snapshot = {
+        "NVDA": {"date": "2026-07-07", "close": 170.0, "one_day_pct": -3.0, "sixty_day_pct": 5.0, "daily_vol_pct": 2.6},
+        "TLT": {"date": "2026-07-07", "close": 81.0, "one_day_pct": -1.3, "sixty_day_pct": 0.5, "daily_vol_pct": 0.6},
+        "SPY": {"date": "2026-07-07", "close": 620.0, "one_day_pct": 0.4, "sixty_day_pct": 8.0, "daily_vol_pct": None},
+    }
+    monkeypatch.setattr("investment_os.hard_source_collectors._download_yfinance_snapshot", lambda _symbols: snapshot)
+    groups = {"market_proxies": ["NVDA", "TLT", "SPY"]}
+
+    candidate = collect_market_move_candidates(groups, datetime(2026, 7, 8, tzinfo=timezone.utc))[0]
+
+    assert candidate.title == "TLT 单日 -1.3%，约为自身近60日日波动的 2.2 倍"
+    assert _zh(candidate.title) == candidate.title  # the reader-text pass must not strip words from it
+    assert candidate.thesis_impact == "unknown_narrowed"
+    assert candidate.summary.startswith("TLT 收盘 81.0，单日 -1.3%（自身常态的 2.2 倍）")
+
+    snapshot["TLT"]["one_day_pct"] = -0.9
+    quiet = collect_market_move_candidates(groups, datetime(2026, 7, 8, tzinfo=timezone.utc))[0]
+
+    assert quiet.title == "市场观察名单单日波动均在各自常态范围内"
+    assert quiet.thesis_impact == "unknown"
+    assert quiet.evidence_change == 2
+
+
+def test_daily_bar_counts_as_a_close_only_after_its_exchange_has_closed():
+    hong_kong_afternoon = datetime(2026, 11, 11, 5, 21, tzinfo=timezone.utc)
+
+    assert not _session_is_complete("0700.HK", date(2026, 11, 11), hong_kong_afternoon)
+    assert _session_is_complete("0700.HK", date(2026, 11, 10), hong_kong_afternoon)
+    assert _session_is_complete("NVDA", date(2026, 11, 10), hong_kong_afternoon)
+    assert not _session_is_complete("NVDA", date(2026, 11, 11), datetime(2026, 11, 11, 20, 30, tzinfo=timezone.utc))
+    assert _session_is_complete("NVDA", date(2026, 11, 11), datetime(2026, 11, 11, 21, 15, tzinfo=timezone.utc))
+
+
+def test_yfinance_snapshot_ignores_a_bar_whose_session_is_still_open(monkeypatch):
+    import pandas as pd
+
+    # 2099-01-05 has not closed yet on any clock this test runs on; every earlier bar has.
+    days = pd.bdate_range(end="2099-01-05", periods=30)
+    closes = [100.0 + (index % 3) for index in range(29)] + [150.0]
+    frame = pd.concat({"Close": pd.DataFrame({"0700.HK": closes}, index=days)}, axis=1)
+    monkeypatch.setitem(
+        __import__("sys").modules, "yfinance", types.SimpleNamespace(download=lambda *_args, **_kwargs: frame)
+    )
+
+    snapshot = _download_yfinance_snapshot(["0700.HK"])["0700.HK"]
+
+    assert snapshot["date"] == str(days[-2].date())
+    assert snapshot["close"] == closes[-2]
+    assert snapshot["daily_vol_pct"] is not None and snapshot["daily_vol_pct"] > 0
+
+
+def test_sec_checks_every_listed_symbol_and_names_the_ones_it_cannot_resolve(monkeypatch):
+    import investment_os.hard_source_collectors as collectors
+
+    tickers = [f"AA{chr(65 + index)}" for index in range(12)]
+    sec_map = {str(index): {"ticker": ticker, "cik_str": 1000 + index} for index, ticker in enumerate(tickers)}
+    asked: list[str] = []
+    monkeypatch.setattr(collectors, "_latest_sec_filing_for_cik", lambda cik: asked.append(cik))
+    collectors._LAST_SOURCE_ERRORS.clear()
+
+    collect_sec_recent_filing_candidates(
+        {"core": tickers + ["ZZZZ"]}, datetime(2026, 7, 8, tzinfo=timezone.utc), sec_map=sec_map
+    )
+
+    assert [cik for cik in asked if cik] == [str(1000 + index) for index in range(12)]
+    gap = get_last_source_errors()[-1]
+    assert gap["code"] == "not_checked"
+    assert gap["message"].endswith("filings not checked: ZZZZ")
+
