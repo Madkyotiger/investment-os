@@ -795,6 +795,9 @@ def render_a_share_brief(
         # Only the institution-seat net amount carries a direction; block trades and filings do not.
         if net_buyers and net_sellers:
             direction = f"龙虎榜机构席位有{net_buyers}只净买入、{net_sellers}只净卖出，方向不一致。"
+        elif net_buyers + net_sellers == 1:
+            side = "净买入" if net_buyers else "净卖出"
+            direction = f"带方向的龙虎榜机构席位数据只有1只，为{side}，不足以判断机构整体方向。"
         elif net_buyers or net_sellers:
             side = "净买入" if net_buyers else "净卖出"
             direction = f"有龙虎榜机构席位数据的{net_buyers + net_sellers}只均为{side}，但上榜席位不代表全部机构。"

@@ -2,11 +2,11 @@
 
 [中文说明](README.zh-CN.md)
 
-Investment OS turns market data and source material into research questions, evidence gaps, counter-explanations, and a short reader brief. It is built for agents and humans who want better research discipline without outsourcing the investment decision.
+Investment OS exists to give its reader enough of the information that could change an investment decision: what changed, how strong the evidence is, what is still missing, and the strongest counter-explanation. The judgment stays with the reader.
 
 This repository is a public evaluation release. It does not recommend, size, or execute trades.
 
-Investment OS is multi-market by design. The existing `daily` watchlist path continues to cover U.S. and Hong Kong equities, market proxies, macro context, and other configured sources; the optional `global-research` profile keeps OpenBB, FinanceToolkit, and SEC/EDGAR research available. `a-share-daily` is an added A-share lane, not a replacement for those paths and not a boundary on future markets or source types.
+Investment OS is multi-market by design. The existing `daily` watchlist path continues to cover U.S. and Hong Kong equities, market proxies, macro context, and other configured sources. `a-share-daily` is an added A-share lane, not a replacement for those paths and not a boundary on future markets or source types.
 
 ## What is working
 
@@ -14,7 +14,7 @@ Investment OS is multi-market by design. The existing `daily` watchlist path con
 - A cross-lane source model for macro, company events, themes, market action, and China/US coverage.
 - Evidence states that keep metadata, single-source data, cross-checked data, and source-body reading separate.
 - Research questions, counter-explanations, next-source prompts, and kill signals.
-- A brief renderer that stays quiet when nothing changed enough to deserve attention.
+- A brief renderer that shows every change that clears the evidence gate, with no fixed item count, and stays quiet when nothing did.
 - An auditable `investment-os daily` runner with explicit watchlist/profile/state paths, source receipts, completed-run manifests, structured failures, and deterministic offline fixtures.
 - A keyless `investment-os a-share-daily` path for A-share stocks, with stock/ETF/index routing, price-provider fallback, institutional-holding disclosures, LHB events, block trades, exchange margin data, and a reader-first brief.
 - An on-demand public expert/media catalog and `source-plan` resolver that selects a minimal capture plan from explicit topics, geographies, viewpoint roles, access permissions, and limits.
@@ -59,7 +59,7 @@ uv run investment-os daily \
   --offline
 ```
 
-Run it again with the same `--state` and a different `--out`: the second completed run returns `daily_run=quiet` and does not re-promote unchanged evidence. `--strict` in live mode fails only when no usable fresh live source succeeds; blocked source targets and stale last-known-good observations do not count as current successes. FRED freshness and per-series material-change thresholds, plus the five-calendar-day market snapshot threshold, are explicit in `configs/macro_series.yaml`; the same config is bundled in the wheel for runs outside a checkout. See [`docs/QUICKSTART.md`](docs/QUICKSTART.md).
+Run it again with the same `--state` and a different `--out`: the second completed run returns `daily_run=quiet` and does not re-promote unchanged evidence. In live mode a market move is material when it exceeds twice that symbol's own trailing 60-day daily volatility, and a daily bar is used only after its exchange has closed. `--strict` in live mode fails only when no usable fresh live source succeeds; blocked source targets and stale last-known-good observations do not count as current successes. FRED freshness and per-series material-change thresholds, plus the five-calendar-day market snapshot threshold, are explicit in `configs/macro_series.yaml`; the same config is bundled in the wheel for runs outside a checkout. See [`docs/QUICKSTART.md`](docs/QUICKSTART.md).
 
 ## On-demand expert and media source plan
 
@@ -90,7 +90,7 @@ It writes four files: `brief.md` for the reader, plus `evidence-ledger.csv`, `co
 
 AKShare is the keyless adapter. The stock-price path falls back from Eastmoney to Sina and Tencent rather than routing a stock through an ETF endpoint. Institutional holdings, LHB, and block-trade rows remain convenience/secondary evidence. SSE/SZSE margin rows are official public data accessed through the adapter, but margin financing still does not identify institutional net flow. Tushare is an optional second-source check; an absent `TUSHARE_TOKEN` does not downgrade the keyless path.
 
-The freshness gate remains five calendar days. A long market holiday can therefore make `--strict` fail closed until a new trading-session row appears; stale data is never relabeled fresh.
+The freshness gate remains five calendar days. A long market holiday can therefore make `--strict` fail closed until a new trading-session row appears; stale data is never relabeled fresh. Before 15:05 Shanghai time the brief uses the last finished session, not the current intraday quote. Its direction sentence is counted from institution-seat net amounts and says so when no directional data exists.
 
 ## Agent install
 
@@ -134,7 +134,7 @@ uv run investment-os doctor --probe daily
 
 For an unattended local runtime, `scripts/run_daily_local.sh` first reads `${XDG_CONFIG_HOME:-$HOME/.config}/investment-os/runtime.env` (or `INVESTMENT_OS_ENV_FILE`) and falls back to the ignored checkout `.env`.
 
-`doctor` reports package `importable`, connector `configured`, and `live_probe` as separate facts. OpenBB, FinanceToolkit, edgartools, AKShare, and Tushare are not required by the US/HK-oriented `investment-os daily`; AKShare is required only by `a-share-daily`. Tushare remains optional. Stooq is a best-effort second-source check: a correct adapter path or HTTP 200 is not a successful probe unless usable CSV rows are parsed. The daily runner remains single-source and says so when Stooq is blocked or incomplete.
+`doctor` reports package `importable`, connector `configured`, and `live_probe` as separate facts. AKShare and Tushare are not required by the US/HK-oriented `investment-os daily`; AKShare is required only by `a-share-daily`. Tushare remains optional. Market prices in `daily` come from one source (Yahoo Finance through yfinance) and are labelled single-source in the brief.
 
 SEC requests require a valid identity string. It is contact configuration, not an API secret, but real personal contact details still belong in ignored local environment files rather than the public repository:
 
@@ -144,11 +144,11 @@ export SEC_EDGAR_IDENTITY="Your Name your-email@example.com"
 
 ## Optional dependency profiles
 
-The public lockfile includes separate profiles for live market data, global research providers, and China data. Check them without adding their packages to the project environment:
+The public lockfile includes separate profiles for live market data and China data. Check them without adding their packages to the project environment:
 
 ```bash
 uv run --no-project python scripts/verify_dependency_profiles.py market
-uv run --no-project python scripts/verify_dependency_profiles.py global-research china
+uv run --no-project python scripts/verify_dependency_profiles.py china
 ```
 
 These checks install from the lockfile and import the required packages. They do not call live providers. The first run can take longer while `uv` fills its cache.
@@ -191,7 +191,7 @@ uv run python scripts/public_release_guard.py
 
 ## Project status
 
-Version `0.2.1` keeps the keyless A-share path from `0.2.0` and fixes freshness evaluation at the UTC day boundary by using the caller's explicit run timestamp in the Asia/Shanghai market date. It is ready for installation and human-reviewed evaluation, not unattended production. Scheduling and downstream distribution remain outside this repository.
+Version `0.2.2` repairs the live `daily` path, which stopped without output whenever a monthly macro release reached the brief; shows every qualifying change instead of the first five; judges market moves against each symbol's own volatility on closed sessions; and retires the early pilot modules with their `global-research` dependency profile. It is ready for installation and human-reviewed evaluation, not unattended production. Scheduling and downstream distribution remain outside this repository.
 
 The repository does not depend on or vendor FinceptTerminal. No FinceptTerminal code is copied here; external systems may be used only as behavioral comparison points during evaluation.
 

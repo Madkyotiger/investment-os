@@ -42,7 +42,7 @@ Use `scripts/verify_dependency_profiles.py` when the task is to verify optional 
 
 ```bash
 uv run --no-project python scripts/verify_dependency_profiles.py market
-uv run --no-project python scripts/verify_dependency_profiles.py global-research china
+uv run --no-project python scripts/verify_dependency_profiles.py china
 ```
 
 Do not add credentials to files. Do not print credential values. Do not enable cron, notifications, brokerage access, or order execution during evaluation.

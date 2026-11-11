@@ -54,7 +54,7 @@ Expected: exit `0`, `daily_run=quiet`, zero promoted IDs, and quiet wording in t
 
 ## Live collection and strict semantics
 
-Omit `--offline` to use the existing public SEC, FRED, yfinance, and Stooq collectors:
+Omit `--offline` to use the public SEC, FRED, and yfinance collectors:
 
 ```bash
 uv run investment-os daily \
