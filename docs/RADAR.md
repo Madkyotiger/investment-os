@@ -59,6 +59,7 @@ Rules:
 - A response that is not the requested document is written with `identity_status: mismatch`, which the validator will not accept as evidence.
 - A source that could not be fetched is listed under "Not captured". Record it as a gap; it does not mean nothing happened.
 - An exchange file published before settlement is not a finished day and is skipped.
+- A later call in the same run adds to the first: when the research finds that a company reported, `radar collect --run-dir RUN --sec TICKER` (no `--config` needed) adds its filings to the same manifest and digest.
 - `--strict` exits `1` when anything requested was missing or mismatched.
 - SEC requests need `SEC_EDGAR_IDENTITY` (a name and contact email, as SEC asks of automated clients).
 

@@ -173,3 +173,23 @@ def test_large_raw_responses_are_hashed_but_not_stored(tmp_path: Path, monkeypat
     row = result.sources[0]
     assert "raw_body_path" not in row and len(row["raw_sha256"]) == 64
     assert sorted(path.name for path in (tmp_path / "hard-evidence").iterdir()) == ["digest.md", "enso.txt", "hard-sources.json"]
+
+
+def test_a_second_call_in_the_same_run_adds_to_the_first(tmp_path: Path):
+    collect(tmp_path, {"fred": CONFIG["fred"], "pages": [{"id": "blocked", "url": "https://example.gov/blocked", "title_contains": "x"}]}, NOW, client=_client())
+    first_sha = json.loads((tmp_path / "hard-evidence" / "hard-sources.json").read_text(encoding="utf-8"))["sources"][0]["sha256"]
+
+    later = collect(tmp_path, {}, NOW, sec_tickers=["NET"], client=_client())
+
+    assert [row["source_id"] for row in later.sources] == ["sec-net-8k-20261110", "sec-net-8k-20261110-doc1"]
+    manifest = json.loads((tmp_path / "hard-evidence" / "hard-sources.json").read_text(encoding="utf-8"))
+    assert [row["source_id"] for row in manifest["sources"]] == ["fred-dgs10", "sec-net-8k-20261110", "sec-net-8k-20261110-doc1"]
+    assert manifest["sources"][0]["sha256"] == first_sha
+    assert [row["source_id"] for row in manifest["not_captured"]] == ["blocked"]
+    digest = (tmp_path / "hard-evidence" / "digest.md").read_text(encoding="utf-8")
+    assert "DGS10 (US 10-year yield, percent): 4.88" in digest and "NET Cloudflare, Inc.: 8-K filed 2026-11-10" in digest and "- blocked:" in digest
+
+
+def test_cli_needs_something_to_capture(tmp_path: Path):
+    with pytest.raises(SystemExit):
+        main(["radar", "collect", "--run-dir", str(tmp_path)])

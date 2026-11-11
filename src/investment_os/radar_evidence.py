@@ -425,34 +425,51 @@ def collect(
         captures.extend(sec_captures)
         result.not_captured.extend(sec_missing)
 
-    for capture in captures:
-        result.digest.extend(capture.digest)
-        if not capture.text.strip():
-            continue
-        row = _write_capture(capture, run_dir, now)
-        result.sources.append(row)
-        if not capture.identity_ok:
-            result.digest.append(f"  WARNING {capture.source_id}: the response is not the requested document (identity_status=mismatch)")
-
+    # A later call in the same run (for example --sec after a company reports) adds to
+    # what is already there; rows the researcher has copied keep pointing at valid files.
     folder = run_dir / EVIDENCE_DIR
     folder.mkdir(parents=True, exist_ok=True)
-    (folder / MANIFEST_NAME).write_text(json.dumps({
+    manifest_path = folder / MANIFEST_NAME
+    try:
+        earlier = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        earlier = {}
+    rows: dict[str, dict[str, Any]] = {row["source_id"]: row for row in earlier.get("sources") or []}
+    digests: dict[str, list[str]] = dict(earlier.get("digest") or {})
+    missing: dict[str, dict[str, str]] = {row["source_id"]: row for row in earlier.get("not_captured") or []}
+    for capture in captures:
+        lines = list(capture.digest)
+        if capture.text.strip():
+            row = _write_capture(capture, run_dir, now)
+            result.sources.append(row)
+            rows[capture.source_id] = row
+            if not capture.identity_ok:
+                lines.append(f"  WARNING {capture.source_id}: the response is not the requested document (identity_status=mismatch)")
+        digests[capture.source_id] = lines
+        missing.pop(capture.source_id, None)
+        result.digest.extend(lines)
+    for row in result.not_captured:
+        missing[row["source_id"]] = row
+        digests.pop(row["source_id"], None)
+
+    manifest_path.write_text(json.dumps({
         "schema_version": "radar-hard-sources-v1",
         "captured_at": now.isoformat(timespec="seconds"),
-        "sources": result.sources,
-        "not_captured": result.not_captured,
+        "sources": list(rows.values()),
+        "not_captured": list(missing.values()),
+        "digest": digests,
         "hash_verifies_bytes_not_truth": True,
     }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     lines = [
-        f"# First-hand captures {now.isoformat(timespec='seconds')}",
+        f"# First-hand captures, updated {now.isoformat(timespec='seconds')}",
         "",
         f"Copy the rows you cite from `{MANIFEST_NAME}` into the packet `sources`. A `bounded_quote` must appear literally in the saved `.txt`.",
         "",
-        *[line if line.startswith("  ") else f"- {line}" for line in result.digest],
+        *[line if line.startswith("  ") else f"- {line}" for source_lines in digests.values() for line in source_lines],
     ]
-    if result.not_captured:
+    if missing:
         lines += ["", "## Not captured (record as gaps, not as nothing happened)", ""]
-        lines += [f"- {row['source_id']}: {row['error']} ({row['url']})" for row in result.not_captured]
+        lines += [f"- {row['source_id']}: {row['error']} ({row['url']})" for row in missing.values()]
     (folder / DIGEST_NAME).write_text("\n".join(lines) + "\n", encoding="utf-8")
     return result
 
@@ -460,14 +477,16 @@ def collect(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Fetch first-hand official captures into a radar run directory.")
     parser.add_argument("--run-dir", type=Path, required=True)
-    parser.add_argument("--config", type=Path, required=True, help="Hard-source list, see configs/radar_hard_sources.sample.yaml")
+    parser.add_argument("--config", type=Path, help="Hard-source list, see configs/radar_hard_sources.sample.yaml. Omit to capture only --sec filings.")
     parser.add_argument("--sec", default="", help="Comma-separated tickers (or SEC CIK numbers) whose recent filings to capture.")
     parser.add_argument("--now", help="Timezone-aware capture time (default: current time).")
     parser.add_argument("--strict", action="store_true", help="Exit 1 when any requested source was not captured or mismatched.")
     args = parser.parse_args(argv)
-    config = yaml.safe_load(args.config.read_text(encoding="utf-8")) or {}
+    config = (yaml.safe_load(args.config.read_text(encoding="utf-8")) or {}) if args.config else {}
     if not isinstance(config, dict):
         parser.error("config must be a mapping")
+    if not args.config and not args.sec.strip():
+        parser.error("nothing to capture: give --config, --sec, or both")
     now = datetime.fromisoformat(args.now) if args.now else datetime.now(timezone.utc).astimezone()
     if now.tzinfo is None:
         parser.error("--now must include a timezone offset")
