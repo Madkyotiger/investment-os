@@ -13,7 +13,7 @@ from investment_os.a_share_daily import (
     market_symbol,
     render_a_share_brief,
 )
-from investment_os.spike1_research_memo import EvidenceItem
+from investment_os.evidence_contract import EvidenceItem
 
 
 def test_market_symbol_routes_shenzhen_shanghai_and_beijing():

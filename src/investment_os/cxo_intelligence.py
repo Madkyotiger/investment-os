@@ -17,7 +17,72 @@ from .judgment_kernel import evidence_fingerprint, is_promotable
 from .macro_sources import load_macro_series
 from .source_universe_intake import SourceCandidate, rank_source_candidates
 from .topic_state import TopicChange, parse_generated_at
-from .us_china_pilot import scan_boundary, scan_external_note_quality
+
+FORBIDDEN_REPORT_PHRASES = [
+    "建议买入",
+    "建议卖出",
+    "建议持有",
+    "建议加仓",
+    "建议减仓",
+    "目标收益",
+    "自动下单",
+    "recommend buy",
+    "recommend sell",
+    "recommend hold",
+]
+
+EXTERNAL_NOTE_FORBIDDEN_PHRASES = FORBIDDEN_REPORT_PHRASES + [
+    "买入",
+    "卖出",
+    "持有",
+    "加仓",
+    "减仓",
+    "清仓",
+    "recommendation to buy",
+    "recommendation to sell",
+    "recommendation to hold",
+    "position sizing",
+]
+
+EXTERNAL_NOTE_HYPE_PHRASES = [
+    "10倍",
+    "20倍",
+    "10x",
+    "20x",
+    "韭菜",
+    "收割",
+    "跟着机构",
+    "爆发机会",
+    "确定性机会",
+    "guaranteed upside",
+    "sure thing",
+    "follow smart money",
+]
+
+EXTERNAL_NOTE_FORBIDDEN_MARKERS = [
+    "/mnt/",
+    ".cache",
+    "uv run",
+    "scripts/",
+    "reports/us-china-pilot",
+    "local DataOS",
+    "info_cache=",
+    "markdown_cache=",
+    "sections_cache=",
+]
+
+
+def scan_external_note_quality(text: str) -> dict[str, int]:
+    lower_text = text.lower()
+    result = {f"decision:{phrase}": lower_text.count(phrase.lower()) for phrase in EXTERNAL_NOTE_FORBIDDEN_PHRASES}
+    result.update({f"hype:{phrase}": lower_text.count(phrase.lower()) for phrase in EXTERNAL_NOTE_HYPE_PHRASES})
+    result.update({f"leak:{marker}": lower_text.count(marker.lower()) for marker in EXTERNAL_NOTE_FORBIDDEN_MARKERS})
+    return result
+
+
+def scan_boundary(text: str) -> dict[str, int]:
+    lower_text = text.lower()
+    return {phrase: lower_text.count(phrase.lower()) for phrase in FORBIDDEN_REPORT_PHRASES}
 
 
 @dataclass

@@ -162,9 +162,6 @@ def run_demo(out_dir: Path) -> int:
 
 OPTIONAL_PACKAGE_USAGE = {
     "yfinance": ["run", "daily"],
-    "openbb": ["optional_global_research_spike"],
-    "financetoolkit": ["optional_global_research_spike"],
-    "edgar": ["optional_complex_filing_research"],
     "akshare": ["a-share-daily", "optional_china_research"],
     "tushare": ["optional_china_second_source"],
 }

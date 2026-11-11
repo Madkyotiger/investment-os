@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-HEAVY_MODULES = ("yfinance", "openbb", "financetoolkit", "edgar", "akshare", "tushare")
+HEAVY_MODULES = ("yfinance", "akshare", "tushare")
 PROFILES = {
     "core": {
         "extras": (),
@@ -15,12 +15,7 @@ PROFILES = {
     "market": {
         "extras": ("market",),
         "required": ("numpy", "pandas", "yaml", "investment_os", "yfinance"),
-        "forbidden": ("openbb", "financetoolkit", "edgar", "akshare", "tushare"),
-    },
-    "global-research": {
-        "extras": ("global-research",),
-        "required": ("investment_os", "yfinance", "openbb", "financetoolkit", "edgar"),
-        "forbidden": (),
+        "forbidden": ("akshare", "tushare"),
     },
     "china": {
         "extras": ("china",),

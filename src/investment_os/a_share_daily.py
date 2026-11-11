@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import yaml
 
-from .spike1_research_memo import EvidenceItem
+from .evidence_contract import EvidenceItem
 
 
 A_SHARE_TIMEZONE = ZoneInfo("Asia/Shanghai")

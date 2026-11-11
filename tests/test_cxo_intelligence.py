@@ -6,7 +6,9 @@ from investment_os.cxo_intelligence import (
     load_profile,
     render_coverage_receipt,
     render_cxo_brief,
+    scan_boundary,
     scan_cxo_brief_quality,
+    scan_external_note_quality,
     write_cxo_outputs,
 )
 from investment_os.source_universe_intake import SourceCandidate, rank_source_candidates
@@ -354,3 +356,19 @@ def test_reader_output_preserves_evidence_and_freshness_state():
     assert "新鲜度：当前" in brief
     assert "另一个需要保留的解释是" in brief
     assert "[来源]" in brief
+
+
+def test_boundary_scan_catches_decision_phrases():
+    result = scan_boundary("这里不应该出现：建议买入，也不能 recommend sell。")
+
+    assert result["建议买入"] == 1
+    assert result["recommend sell"] == 1
+
+
+def test_external_note_quality_scan_catches_hype_and_social_pump_language():
+    scan = scan_external_note_quality("这不是对外简报能说的话：10倍、韭菜、跟着机构、sure thing。")
+
+    assert scan["hype:10倍"] == 1
+    assert scan["hype:韭菜"] == 1
+    assert scan["hype:跟着机构"] == 1
+    assert scan["hype:sure thing"] == 1

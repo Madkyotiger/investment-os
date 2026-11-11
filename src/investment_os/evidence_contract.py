@@ -1,6 +1,28 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Mapping
+
+
+@dataclass
+class EvidenceItem:
+    symbol: str
+    category: str
+    claim: str
+    value: str
+    source: str
+    as_of_date: str
+    freshness: str
+    status: str
+    url: str = ""
+    note: str = ""
+    retrieved_at: str = ""
+    body_read_status: str = "not_read"
+    content_hash: str = ""
+    cannot_prove: str = ""
+    source_authority: str = "unknown"
+    underlying_endpoint: str = ""
+
 
 EVIDENCE_STATUSES = frozenset(
     {
