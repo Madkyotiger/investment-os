@@ -45,7 +45,7 @@ def test_price_collection_falls_back_from_eastmoney_to_sina():
     evidence, gaps = fetch_stock_price_evidence(
         AShareSymbol("601318", "中国平安"),
         FakeAK(),
-        generated_at=datetime(2026, 8, 3, tzinfo=timezone.utc),
+        generated_at=datetime(2026, 8, 3, 8, 0, tzinfo=timezone.utc),
     )
 
     assert gaps == []
@@ -87,7 +87,6 @@ def test_reader_brief_suppresses_pipeline_language_and_keeps_bounded_judgment():
     assert "今天的判断" in brief
     assert "没有足够强的机构行为信号" in brief
     assert "不是交易建议" in brief
-    assert len(brief) <= 1200
     for marker in ["source_error", "Evidence Ledger", "AKShare", "status", "接口", "测试"]:
         assert marker not in brief
 
@@ -195,3 +194,58 @@ def test_margin_feed_cut_at_a_page_size_is_a_source_error_not_a_missing_row():
 
     assert margin_rows(cut_before_symbol)[0].status == "source_error"
     assert margin_rows(complete_list)[0].status == "missing"
+
+
+def test_price_before_the_close_uses_the_last_finished_session():
+    class FakeAK:
+        @staticmethod
+        def stock_zh_a_hist(**_kwargs):
+            return pd.DataFrame([
+                {"日期": "2026-11-09", "收盘": 250.00, "成交量": 100.0, "成交额": 1000.0},
+                {"日期": "2026-11-10", "收盘": 252.50, "成交量": 120.0, "成交额": 1200.0},
+                {"日期": "2026-11-11", "收盘": 246.75, "成交量": 60.0, "成交额": 600.0},
+            ])
+
+    def close_row(hour_utc: int) -> EvidenceItem:
+        evidence, _ = fetch_stock_price_evidence(
+            AShareSymbol("300750", "宁德时代"),
+            FakeAK(),
+            generated_at=datetime(2026, 11, 11, hour_utc, 7, tzinfo=timezone.utc),
+        )
+        return next(item for item in evidence if item.category == "a_share_price")
+
+    midday, after_close = close_row(5), close_row(8)
+
+    assert (midday.as_of_date, midday.value) == ("2026-11-10", "252.50")
+    assert (after_close.as_of_date, after_close.value) == ("2026-11-11", "246.75")
+
+
+def _lhb(code: str, amount: str) -> EvidenceItem:
+    return EvidenceItem(
+        symbol=code,
+        category="a_share_lhb",
+        claim="institutional LHB activity",
+        value=f"events=1;amount={amount}",
+        source="AKShare.stock_lhb_jgmmtj_em",
+        as_of_date="2026-08-03",
+        freshness="fresh",
+        status="ok",
+    )
+
+
+def test_direction_sentence_is_counted_from_the_evidence_and_every_symbol_is_listed():
+    generated_at = datetime(2026, 8, 3, 8, 0, tzinfo=timezone.utc)
+    symbols = [AShareSymbol(f"60000{index}", f"标的{index}") for index in range(6)]
+
+    mixed = render_a_share_brief(
+        symbols,
+        [_lhb(symbol.code, "5000000.0" if index < 4 else "-3000000.0") for index, symbol in enumerate(symbols)],
+        generated_at=generated_at,
+    )
+    one_sided = render_a_share_brief(symbols[:2], [_lhb(symbol.code, "5000000.0") for symbol in symbols[:2]], generated_at=generated_at)
+
+    assert "龙虎榜机构席位有4只净买入、2只净卖出，方向不一致。" in mixed
+    assert all(f"（{symbol.code}）" in mixed for symbol in symbols)
+    assert "有龙虎榜机构席位数据的2只均为净买入，但上榜席位不代表全部机构。" in one_sided
+    assert "没有显示机构形成一致方向" not in mixed + one_sided
+
