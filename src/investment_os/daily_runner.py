@@ -495,7 +495,7 @@ def run_daily(
             generated_at=generated_at,
         )
 
-        items = build_cxo_brief_items(candidates, profile, max_items=5, topic_changes=changes)
+        items = build_cxo_brief_items(candidates, profile, topic_changes=changes)
         status = "completed" if items else "quiet"
         brief = render_cxo_brief(items, profile, generated_at=generated_at, topic_changes=changes)
         quality_failures = {key: value for key, value in scan_cxo_brief_quality(brief).items() if value}

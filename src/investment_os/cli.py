@@ -136,7 +136,7 @@ def run_demo(out_dir: Path) -> int:
         relevance_keywords=["AI", "margin", "earnings", "Fed", "rates"],
     )
     candidates = _demo_candidates()
-    items = build_cxo_brief_items(candidates, profile, max_items=5)
+    items = build_cxo_brief_items(candidates, profile)
     brief_path, ranked_path, quality_path = write_cxo_outputs(
         items,
         profile,

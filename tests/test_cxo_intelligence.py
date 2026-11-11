@@ -313,7 +313,7 @@ def test_theme_item_id_cannot_invent_an_annual_report_claim():
     assert "Only an unverified theme note is available" in brief
 
 
-def test_brief_deduplicates_repeated_evidence_fingerprints_and_caps_at_five():
+def test_brief_keeps_every_qualifying_item_and_drops_repeated_evidence_fingerprints():
     profile = load_profile(PROFILE, "founder_operator")
     candidates = []
     for index in range(7):
@@ -337,9 +337,11 @@ def test_brief_deduplicates_repeated_evidence_fingerprints_and_caps_at_five():
     )
     duplicate.source_url = candidates[0].source_url
 
-    items = build_cxo_brief_items(candidates + [duplicate], profile, max_items=20)
+    items = build_cxo_brief_items(candidates + [duplicate], profile)
 
-    assert len(items) == 5
+    assert sorted(item.candidate.item_id for item in items) == [f"company_events:ACME:{index}" for index in range(7)]
+    assert len(render_cxo_brief(items, profile).split("\n## ")) - 1 == 7
+    assert len(build_cxo_brief_items(candidates, profile, max_items=3)) == 3
 
 
 def test_reader_output_preserves_evidence_and_freshness_state():

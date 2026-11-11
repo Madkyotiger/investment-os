@@ -222,7 +222,7 @@ def score_cxo_relevance(candidate: SourceCandidate, profile: CXOProfile) -> tupl
 def build_cxo_brief_items(
     candidates: list[SourceCandidate],
     profile: CXOProfile,
-    max_items: int = 5,
+    max_items: int | None = None,
     topic_changes: list[TopicChange] | None = None,
 ) -> list[CXOBriefItem]:
     meaningful_ids: set[str] | None = None
@@ -256,7 +256,7 @@ def build_cxo_brief_items(
         seen_theses.add(candidate.thesis_key)
         seen_fingerprints.add(fingerprint)
         items.append(CXOBriefItem(candidate=candidate, cxo_relevance=relevance, cxo_reason=reason))
-    return sorted(
+    ranked = sorted(
         items,
         key=lambda item: (
             item.cxo_relevance,
@@ -266,7 +266,9 @@ def build_cxo_brief_items(
             item.candidate.portfolio_relevance,
         ),
         reverse=True,
-    )[: min(max_items, 5)]
+    )
+    # Every qualifying change reaches the reader; a caller may still ask for fewer.
+    return ranked[:max_items] if max_items else ranked
 
 
 def render_coverage_receipt(
@@ -473,7 +475,7 @@ def render_cxo_brief(
         "single_source_data": "单源数据",
     }
     freshness_labels = {"current": "当前", "stale": "过期"}
-    for item in items[:5]:
+    for item in items:
         cand = item.candidate
         title = _zh(cand.title).rstrip("。.")
         summary = _clip_at_clause(_plain_summary(cand)).rstrip("。.")
@@ -612,7 +614,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--profile-id", default="founder_operator")
     parser.add_argument("--topic-changes", type=Path, default=None)
     parser.add_argument("--out", type=Path, default=Path("reports/cxo-intelligence"))
-    parser.add_argument("--max-items", type=int, default=5)
+    parser.add_argument("--max-items", type=int, default=None)
     parser.add_argument("--generated-at", default="", help="ISO timestamp for reproducible historical samples.")
     args = parser.parse_args(argv)
 

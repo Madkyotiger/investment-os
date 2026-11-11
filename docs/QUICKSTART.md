@@ -27,7 +27,7 @@ Expected result: exit `0` and `daily_run=completed`. Offline mode is determinist
 
 The completed output contains:
 
-- `cxo_daily_brief.md`: maximum five changed, evidence-gated reader items;
+- `cxo_daily_brief.md`: every changed, evidence-gated reader item, with no fixed count;
 - `source_receipt.json`: source URL, source/retrieval dates, evidence/freshness state, content hash, and promotion decision;
 - `manifest.json`: completed/quiet result, source successes/failures, item counts, paths, and artifact hashes;
 - `run_state.json`: run result, input fingerprint, meaningful-change count, and promoted IDs;
