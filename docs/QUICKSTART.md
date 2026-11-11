@@ -23,7 +23,7 @@ uv run investment-os daily \
   --offline
 ```
 
-Expected result: exit `0` and `daily_run=completed`. Offline mode is deterministic. `--strict` does not reject blocked synthetic candidates because strict all-sources-failed behavior applies to live collection.
+Expected result: exit `0` and `daily_run=completed`. Offline mode is deterministic. The reader profile defaults to `founder_operator`; pass `--profile-id NAME` to use another profile from the same file. `--strict` does not reject blocked synthetic candidates because strict all-sources-failed behavior applies to live collection.
 
 The completed output contains:
 

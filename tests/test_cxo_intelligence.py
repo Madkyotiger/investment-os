@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -9,6 +10,7 @@ from investment_os.cxo_intelligence import (
     scan_boundary,
     scan_cxo_brief_quality,
     scan_external_note_quality,
+    score_cxo_relevance,
     write_cxo_outputs,
 )
 from investment_os.source_universe_intake import SourceCandidate, rank_source_candidates
@@ -374,3 +376,17 @@ def test_external_note_quality_scan_catches_hype_and_social_pump_language():
     assert scan["hype:韭菜"] == 1
     assert scan["hype:跟着机构"] == 1
     assert scan["hype:sure thing"] == 1
+
+
+def test_relevance_keywords_match_whole_words_only():
+    profile = load_profile(PROFILE, "founder_operator")
+    assert "AI" in profile.relevance_keywords
+
+    def reason(title: str) -> str:
+        candidate = replace(
+            _candidate(), title=title, summary="", themes="", tickers="", research_question="", next_primary_source=""
+        )
+        return score_cxo_relevance(candidate, profile)[1]
+
+    assert "AI" not in reason("Retail sales in Taiwan remain flat")
+    assert "AI" in reason("Hyperscaler AI spending guidance")

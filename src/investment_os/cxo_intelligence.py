@@ -197,7 +197,11 @@ def score_cxo_relevance(candidate: SourceCandidate, profile: CXOProfile) -> tupl
             candidate.next_primary_source,
         ]
     ).lower()
-    keyword_hits = [kw for kw in profile.relevance_keywords if kw.lower() in text]
+    # "AI" must not match inside "retail" or "Taiwan"; non-Latin keywords have no word boundary to test.
+    keyword_hits = [
+        kw for kw in profile.relevance_keywords
+        if (re.search(rf"(?<![a-z0-9]){re.escape(kw.lower())}(?![a-z0-9])", text) if kw.isascii() else kw.lower() in text)
+    ]
     exposure_hits = [item for item in profile.business_exposure + profile.asset_exposure if any(part.lower() in text for part in item.replace("/", " ").split())]
     project_hits = [item for item in profile.current_projects if any(part.lower() in text for part in item.replace("/", " ").split())]
     score = 1

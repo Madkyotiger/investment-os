@@ -74,3 +74,15 @@ def test_stale_source_cache_is_not_returned_without_explicit_opt_in(tmp_path, mo
     )
 
     assert record is None
+
+
+def test_cache_settings_use_the_project_name_and_still_accept_the_old_one(tmp_path, monkeypatch):
+    monkeypatch.delenv("INVESTMENT_OS_CACHE_DIR", raising=False)
+    monkeypatch.setenv("INVEST_ADVISOR_CACHE_DIR", str(tmp_path / "old"))
+    assert source_cache.cache_root() == tmp_path / "old"
+
+    monkeypatch.setenv("INVESTMENT_OS_CACHE_DIR", str(tmp_path / "new"))
+    assert source_cache.cache_root() == tmp_path / "new"
+
+    monkeypatch.setenv("INVESTMENT_OS_DISABLE_CACHE", "1")
+    assert source_cache.cache_enabled() is False

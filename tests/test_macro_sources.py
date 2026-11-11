@@ -244,3 +244,30 @@ def test_hard_source_daily_path_uses_full_revision_aware_macro_pipeline(monkeypa
 
     assert {candidate.item_id.rsplit(":", 1)[-1] for candidate in macro} == set(definitions)
     assert (tmp_path / "macro-state.json").exists()
+
+
+def test_monthly_series_stay_current_until_the_next_release():
+    # October payrolls (observation date 2026-10-01) are published in early November and remain
+    # the latest figure until early December.
+    definition = load_macro_series(Path("configs/macro_series.yaml"))["PAYEMS"]
+
+    assert observation_freshness("2026-10-01", datetime(2026, 12, 3, tzinfo=timezone.utc), definition) == "current"
+    assert observation_freshness("2026-10-01", datetime(2027, 1, 15, tzinfo=timezone.utc), definition) == "stale"
+
+
+def test_a_same_date_revision_is_flagged_once_and_not_again(tmp_path):
+    state = tmp_path / "macro-state.json"
+    definition = {"DGS10": load_macro_series(Path("configs/macro_series.yaml"))["DGS10"]}
+
+    def revisions(levels: list[str]) -> list[float | None]:
+        seen = []
+        for day, level in enumerate(levels, start=8):
+            text = f"observation_date,DGS10\n2026-07-06,4.20\n2026-07-07,{level}\n"
+            seen.append(collect_macro_observations(
+                definition, fetch_text=lambda _series, text=text: text, state_path=state,
+                retrieved_at=datetime(2026, 7, day, tzinfo=timezone.utc),
+            )[0].revision)
+        return seen
+
+    first, revised, repeat = revisions(["4.25", "4.30", "4.30"])
+    assert first is None and revised == pytest.approx(0.05) and repeat is None

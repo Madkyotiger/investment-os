@@ -152,3 +152,14 @@ def test_a_share_strict_fails_when_no_fresh_price_rows(monkeypatch, tmp_path):
         str(tmp_path),
         "--strict",
     ]) == 2
+
+
+def test_doctor_probe_fails_the_command_when_the_probed_path_is_degraded(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "investment_os.cli._probe_daily_connectors",
+        lambda: {"yfinance": "available", "sec": "unavailable", "fred": "available"},
+        raising=False,
+    )
+
+    assert main(["doctor", "--probe", "daily"]) == 1
+    assert json.loads(capsys.readouterr().out)["daily_readiness"] == "degraded"

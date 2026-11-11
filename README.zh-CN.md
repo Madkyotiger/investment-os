@@ -36,7 +36,7 @@ Investment OS 从设计上就是多市场系统。原有 `daily` watchlist 路�
 
 ## 快速开始
 
-需要 Python 3.11 或 3.12，以及 [uv](https://docs.astral.sh/uv/)。
+需要 Python 3.11、3.12 或 3.13，以及 [uv](https://docs.astral.sh/uv/)。
 
 ```bash
 git clone https://github.com/Madkyotiger/investment-os.git
@@ -134,7 +134,7 @@ uv sync --frozen --extra dev --extra market
 cp .env.example .env
 # 把 .env 中的 SEC 占位身份改成真实联系身份。
 set -a; source .env; set +a
-uv run investment-os doctor --probe daily
+uv run investment-os doctor --probe daily   # 必需的来源有一个不响应就以 1 退出
 ```
 
 无人值守的本地运行可调用 `scripts/run_daily_local.sh`。脚本优先读取 `${XDG_CONFIG_HOME:-$HOME/.config}/investment-os/runtime.env`（也可用 `INVESTMENT_OS_ENV_FILE` 指定），没有时才回退到仓库内被忽略的 `.env`。
@@ -178,6 +178,10 @@ Investment OS 可以回答：
 
 它不能告诉你买入、卖出、持有、调整仓位或执行交易。市场数据可能过期、不完整、延迟、修订或错误。来源元数据只能证明一份材料存在，不能证明对材料的解读正确。
 
+## 产物交接边界
+
+`investment-os daily` 把 `cxo_daily_brief.md` 写在一份完成的 `manifest.json` 旁边，后者记录各产物的哈希和运行状态。交接到此为止。Investment OS 不选择发送目的地，不生成渠道消息格式，不保存渠道凭证，不发送消息，也不处理渠道层面的重试和去重。下游运行环境在自行核对完成的 manifest 和产物哈希之后，可以用任何渠道。
+
 ## 公开仓库边界
 
 公开仓库包含代码、合成测试数据、示例配置、测试和运行文档，不包含：
@@ -195,7 +199,7 @@ uv run python scripts/public_release_guard.py
 
 ## 当前状态
 
-`0.3.0` 把每日雷达并入本项目：真实的 Agent 日报实际运行的代码、对这些运行反复只能读到二手转述的官方来源的直接抓取，以及一份说明这些运行采到了什么、没采到什么的报告。`0.2.2` 修复了联网 `daily` 路径（此前只要月度宏观数据进入简报就会中止且不出稿）；达标的变化全部列出，不再只取前 5 条；市场条目按每只标的自身波动判断，并且只用已收盘的交易日；早期试验模块和 `global-research` 依赖组合已下线。它适合安装和真人复核评估，不适合无人值守生产运行。定时运行和下游分发由外部运行时负责，不在本仓库范围内。
+`0.3.2` 让 `daily` 的公司事件线说出文件本身写了什么（8-K 的申报事项；10-Q、10-K 里的营收、净利润、每股摊薄收益及上年同期数），此前只停在“已获取文件”。`0.3.0` 把每日雷达并入本项目：真实的 Agent 日报实际运行的代码、对这些运行反复只能读到二手转述的官方来源的直接抓取，以及一份说明这些运行采到了什么、没采到什么的报告。`0.2.2` 修复了联网 `daily` 路径（此前只要月度宏观数据进入简报就会中止且不出稿）；达标的变化全部列出，不再只取前 5 条；市场条目按每只标的自身波动判断，并且只用已收盘的交易日；早期试验模块和 `global-research` 依赖组合已下线。它适合安装和真人复核评估，不适合无人值守生产运行。定时运行和下游分发由外部运行时负责，不在本仓库范围内。
 
 ## License
 

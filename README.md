@@ -25,7 +25,7 @@ It is not a brokerage client, portfolio manager, trading bot, autonomous financi
 
 ## Quick start
 
-You need Python 3.11 or 3.12 and [uv](https://docs.astral.sh/uv/).
+You need Python 3.11, 3.12 or 3.13 and [uv](https://docs.astral.sh/uv/).
 
 ```bash
 git clone https://github.com/Madkyotiger/investment-os.git
@@ -134,7 +134,7 @@ uv sync --frozen --extra dev --extra market
 cp .env.example .env
 # Replace the SEC placeholder in .env with a real contact identity.
 set -a; source .env; set +a
-uv run investment-os doctor --probe daily
+uv run investment-os doctor --probe daily   # exits 1 when a required source does not answer
 ```
 
 For an unattended local runtime, `scripts/run_daily_local.sh` first reads `${XDG_CONFIG_HOME:-$HOME/.config}/investment-os/runtime.env` (or `INVESTMENT_OS_ENV_FILE`) and falls back to the ignored checkout `.env`.
@@ -196,7 +196,7 @@ uv run python scripts/public_release_guard.py
 
 ## Project status
 
-Version `0.3.0` brings the daily radar into the package: the code a real agent-researched daily brief runs on, first-hand captures of the official sources those runs kept reading second-hand, and a report of what the runs could and could not collect. Version `0.2.2` repairs the live `daily` path, which stopped without output whenever a monthly macro release reached the brief; shows every qualifying change instead of the first five; judges market moves against each symbol's own volatility on closed sessions; and retires the early pilot modules with their `global-research` dependency profile. It is ready for installation and human-reviewed evaluation, not unattended production. Scheduling and downstream distribution remain outside this repository.
+Version `0.3.2` makes the company-event line of `daily` report what a filing itself states (the event items of an 8-K; revenue, net income and diluted EPS from a 10-Q or 10-K, with the year-ago figures), where it used to stop at "filing retrieved". Version `0.3.0` brings the daily radar into the package: the code a real agent-researched daily brief runs on, first-hand captures of the official sources those runs kept reading second-hand, and a report of what the runs could and could not collect. Version `0.2.2` repairs the live `daily` path, which stopped without output whenever a monthly macro release reached the brief; shows every qualifying change instead of the first five; judges market moves against each symbol's own volatility on closed sessions; and retires the early pilot modules with their `global-research` dependency profile. It is ready for installation and human-reviewed evaluation, not unattended production. Scheduling and downstream distribution remain outside this repository.
 
 The repository does not depend on or vendor FinceptTerminal. No FinceptTerminal code is copied here; external systems may be used only as behavioral comparison points during evaluation.
 

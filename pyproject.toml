@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "investment-os"
-version = "0.3.1"
+version = "0.3.2"
 description = "Evidence-first personal investment research pipeline for agents and humans."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{name = "Madkyotiger"}]
-requires-python = ">=3.11,<3.13"
+requires-python = ">=3.11,<3.14"
 dependencies = [
   "numpy>=1.26",
   "pandas>=2.2",
