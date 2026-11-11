@@ -65,6 +65,8 @@ class UpstreamRadarObjective:
     require_opportunity_context: bool = False
     silent_no_push: bool = False
     research_sources: dict[str, Any] = field(default_factory=dict)
+    # How many due open questions one run must review; None keeps every due question required.
+    followup_review_budget: int | None = None
 
 
 @dataclass(frozen=True)
@@ -115,6 +117,14 @@ class UpstreamRadarResult:
     gaps: tuple[str, ...] = ()
 
 
+def _review_budget(value: Any) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError("followup_review_budget must be a positive integer")
+    return value
+
+
 def _tuple_strings(value: Any) -> tuple[str, ...]:
     if not isinstance(value, list):
         return ()
@@ -147,6 +157,7 @@ def load_objective(path: Path) -> UpstreamRadarObjective:
         require_opportunity_context=raw.get("require_opportunity_context") is True,
         silent_no_push=raw.get("silent_no_push") is True,
         research_sources=dict(raw.get("research_sources") or {}),
+        followup_review_budget=_review_budget(raw.get("followup_review_budget")),
     )
 
 
@@ -771,12 +782,13 @@ def write_outputs(
     _atomic_text(brief_path, "本轮研究尚未完成。")
     _atomic_text(selected_path, "[]")
     unreviewed_due: list[str] = []
+    deferred_due: list[str] = []
     if db_path is not None and packet is not None:
-        from .radar_store import ingest_run, open_db, validate_continuity
+        from .radar_store import ingest_run, open_db, review_followup_state
         try:
             conn = open_db(db_path)
             try:
-                unreviewed_due = validate_continuity(conn, packet, result, objective)
+                unreviewed_due, deferred_due = review_followup_state(conn, packet, result, objective)
                 ingest_run(conn, packet, result, run_dir)
             finally:
                 conn.close()
@@ -814,6 +826,8 @@ def write_outputs(
         "errors": list(result.errors),
         "gaps": list(result.gaps),
         "unreviewed_due_followups": unreviewed_due,
+        "deferred_due_followups": deferred_due,
+        "followup_review_budget": objective.followup_review_budget,
         "coverage": list(result.coverage),
         "advisory_boundary": objective.advisory_boundary,
         "item_cap": "none",

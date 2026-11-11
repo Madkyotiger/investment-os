@@ -55,7 +55,7 @@ def test_collection_report_restates_runs_sources_and_gaps(tmp_path: Path):
     assert [row["gap"] for row in report["declared_research_gaps"]] == ["LME 原始行情页未打开"] * 2
     assert report["coverage_notes_mentioning_a_gap"][0]["note"] == "缺口：PPI 未取得。"
     assert report["rejected_reasons"] == {"stale_event": 2, "low_decision_impact": 2}
-    assert "| 2026-11-10/073000 | fail blocked | 0 | 3 (1) | 2 |" in render_markdown(report)
+    assert "| 2026-11-10/073000 | fail blocked | 0 | 3 (1) | 0 | 2 | 0 |" in render_markdown(report)
 
 
 def test_collection_report_is_reachable_from_the_cli(tmp_path: Path, capsys):

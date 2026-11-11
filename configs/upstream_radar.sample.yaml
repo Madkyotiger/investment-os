@@ -3,6 +3,8 @@ reader_id: reader
 objective: "每日财经资讯：面向一般财经读者，整合全球宏观、地缘与供给、能源、气候与粮食、金属、AI及其他产业、公司财报和市场解读；核验经济传导、机会、风险及反证，不绑定个人身份或私人财务。"
 require_opportunity_context: true
 silent_no_push: true
+# Due open questions one run must review. The rest stay open and are reported, not required.
+followup_review_budget: 12
 decision_horizon: "days to quarters"
 max_age_hours: 72
 minimum_source_authority: 4

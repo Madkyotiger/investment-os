@@ -209,7 +209,7 @@ def build_preflight(
     if db_path is not None:
         from .radar_store import open_db, readback_followups, latest_success_as_of
         with open_db(db_path) as conn:
-            followups = readback_followups(conn, now)
+            followups = readback_followups(conn, now, review_budget=objective.followup_review_budget)
             last_success = latest_success_as_of(conn)
         if last_success and (now - last_success).total_seconds() > objective.max_age_hours * 3600:
             catchup_since = last_success.isoformat()
@@ -219,7 +219,12 @@ def build_preflight(
         {key: row.get(key) for key in ("tracking_key", "title", "thesis_key", "schema_status", "run_id", "run_dir", "status", "next_check_at", "due")}
         for row in followups
     ]
-    base["due_followups"] = [row for row in followups if row["due"]]
+    budget = objective.followup_review_budget
+    # Without a budget every due question is handed over, as before. With one, only this
+    # run's review list is; the rest are named so nothing disappears from view.
+    base["due_followups"] = [row for row in followups if row["due"] and (budget is None or row["required"])]
+    base["deferred_followups"] = [] if budget is None else [row for row in followups if row["due"] and not row["required"]]
+    base["followup_review_budget"] = budget
     if run_dir is None and not meaningful:
         base.update({
             "preflight_status": "blocked",
@@ -310,7 +315,18 @@ def build_digest(manifest: dict[str, Any], manifest_path: Path, digest_sha: str)
         "manual_audit_correction": manifest.get("manual_audit_correction"),
         "required_this_round": manifest.get("required_this_round"),
         "research_sources": manifest.get("research_sources"),
+        "followup_rule": (
+            None if manifest.get("followup_review_budget") is None else
+            f"due_followups 是本轮必须复核的问题，上限 {manifest['followup_review_budget']} 条，逐条复核。"
+            "程序先排还没复核过的，其次按影响分和等待时间。due_deferred 到期但本轮不要求："
+            "研究中读到与其中某条相关的新证据，就照常写进 followup_updates 或作为同一 tracking_key 的新入选项；"
+            "没有就不处理，程序会如实记入回执。需要某条的旧判断全文时按 tracking_key 在完整 manifest 里查。"
+        ),
         "due_followups": due,
+        "due_deferred": [
+            {key: row.get(key) for key in ("tracking_key", "title", "impact_score", "days_open", "review_count")}
+            for row in manifest.get("deferred_followups") or []
+        ],
         "open_not_due": open_not_due,
         "meaningful_thesis_index": theses,
         "prior_run": {
@@ -364,6 +380,7 @@ def main(argv: list[str] | None = None) -> int:
             "meaningful_thesis_state": len(manifest.get("meaningful_thesis_state") or []),
             "open_followups": len(manifest.get("open_followups") or []),
             "due_followups": len(manifest.get("due_followups") or []),
+            "deferred_followups": len(manifest.get("deferred_followups") or []),
             "catchup_since": manifest.get("catchup_since"),
             "prior_coverage": len(prior.get("prior_coverage") or []),
             "required_coverage": manifest["required_this_round"]["coverage_count"],

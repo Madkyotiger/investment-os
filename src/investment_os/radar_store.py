@@ -516,8 +516,13 @@ def validate_continuity(conn: sqlite3.Connection, packet: dict, result, objectiv
     advanced) and are reported; they block only a silent/no-push run, because a
     publishable issue should not be held hostage by one unresolved question.
     """
+    return review_followup_state(conn, packet, result, objective)[0]
+
+
+def review_followup_state(conn: sqlite3.Connection, packet: dict, result, objective) -> tuple[list[str], list[str]]:
+    """(required questions this run left unreviewed, due questions beyond this run's review budget)."""
     if _result_field(result, "status") != "pass" or not objective.require_opportunity_context:
-        return []
+        return [], []
     from .upstream_radar import _parse_aware
     boundary = trusted_catchup_boundary(conn, packet, objective)
     if boundary is not None and (not packet.get("catchup_since") or _parse_aware(packet["catchup_since"], "catchup_since") != boundary):
@@ -525,8 +530,12 @@ def validate_continuity(conn: sqlite3.Connection, packet: dict, result, objectiv
     as_of = _parse_aware(packet.get("as_of"), "as_of")
     latest = latest_success_as_of(conn)
     if latest is not None and latest > as_of:
-        return []  # historical replay never owns current due-state completion
-    due = {row['tracking_key'] for row in readback_followups(conn, as_of) if row['due'] and row['required']}
+        return [], []  # historical replay never owns current due-state completion
+    followups = readback_followups(
+        conn, as_of, review_budget=getattr(objective, "followup_review_budget", None),
+        exclude_run_id=str(packet.get("run_id") or ""),
+    )
+    due = {row['tracking_key'] for row in followups if row['due'] and row['required']}
     selected_ids = {item.item_id for item in _result_field(result, 'selected', ())}
     covered = {
         str(row.get('tracking_key') or row.get('item_id'))
@@ -539,22 +548,46 @@ def validate_continuity(conn: sqlite3.Connection, packet: dict, result, objectiv
     missing = due - covered
     if missing and _result_field(result, "outcome") != "push":
         raise ValueError("due followups not reviewed: " + ", ".join(sorted(missing)))
-    return sorted(missing)
+    deferred = {row['tracking_key'] for row in followups if row['deferred']} - covered
+    return sorted(missing), sorted(deferred)
+
+
+def _review_priority(item: dict[str, Any]) -> tuple[Any, ...]:
+    """Which due questions get this run's limited review slots first.
+
+    A question nobody has looked at since it was opened comes before one already
+    reviewed; then higher impact; then the one that has waited longest. Replayed on
+    three weeks of real runs, this order gave every question a first look at the
+    same daily effort that had been reaching a third of them, because re-checks of
+    the same questions no longer take the slots.
+    """
+    return (item["review_count"], -item["impact_score"], item["as_of"], item["tracking_key"])
 
 
 def readback_followups(
-    conn: sqlite3.Connection, now: datetime | None = None, *, include_closed: bool = False,
+    conn: sqlite3.Connection,
+    now: datetime | None = None,
+    *,
+    include_closed: bool = False,
+    review_budget: int | None = None,
+    exclude_run_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Latest state per entity/question, never latest item per broad theme.
 
     Old selected candidates are implicitly open without rewriting legacy evidence.
     Explicit stable tracking_key links later evidence; no key means the exact item_id.
     This is current operational state, not an as-of historical reconstruction API.
+
+    ``review_budget`` limits how many due questions one run must review. The rest stay
+    open and due, marked ``deferred``; they are reported, not required. ``exclude_run_id``
+    leaves one run out, so a run that is evaluated twice is judged against the same list.
     """
     now = now or datetime.now(TZ)
+    skip = exclude_run_id or ""
     candidates = conn.execute(
         "SELECT c.*, r.as_of, r.schema_status, r.run_dir FROM candidates c "
-        "JOIN runs r ON r.run_id=c.run_id WHERE c.inclusion='selected' AND r.status='pass'"
+        "JOIN runs r ON r.run_id=c.run_id WHERE c.inclusion='selected' AND r.status='pass' AND c.run_id != ?",
+        (skip,),
     ).fetchall()
     state: dict[str, dict[str, Any]] = {}
     for candidate in sorted(candidates, key=lambda r: (datetime.fromisoformat(r['as_of']), r['run_id'], r['item_id'])):
@@ -566,17 +599,19 @@ def readback_followups(
             "thesis_key": item["thesis_key"], "title": item["title"],
             "schema_status": item["schema_status"], "run_dir": item["run_dir"],
             "as_of": item["as_of"], "status": "open", "next_check_at": None,
-            "judgment": judgment,
+            "judgment": judgment, "impact_score": int(item["impact_score"] or 0), "review_count": 0,
         }
     reviews = conn.execute(
-        "SELECT f.*, r.as_of FROM followup_reviews f JOIN runs r ON r.run_id=f.run_id WHERE r.status='pass'"
+        "SELECT f.*, r.as_of FROM followup_reviews f JOIN runs r ON r.run_id=f.run_id "
+        "WHERE r.status='pass' AND f.run_id != ?",
+        (skip,),
     ).fetchall()
     for review in sorted(reviews, key=lambda r: (datetime.fromisoformat(r['as_of']), r['run_id'])):
         item = state.get(review['tracking_key'])
         if item is not None and datetime.fromisoformat(review['as_of']) >= datetime.fromisoformat(item['as_of']):
             item.update(status=review['status'], next_check_at=review['next_check_at'],
                         last_review_at=review['as_of'], review_reason=review['reason'],
-                        review_run_id=review['run_id'])
+                        review_run_id=review['run_id'], review_count=item['review_count'] + 1)
     result = []
     for item in state.values():
         # Questions expire instead of accumulating forever. After
@@ -595,7 +630,14 @@ def readback_followups(
             continue
         item['due'] = item['status'] == 'open' and (next_check is None or next_check <= now)
         item['required'] = item['due'] and age <= timedelta(days=FOLLOWUP_STALE_DAYS)
+        item['deferred'] = False
+        item['days_open'] = age.days
         result.append(item)
+    if review_budget is not None:
+        ranked = sorted((item for item in result if item['required']), key=_review_priority)
+        for item in ranked[max(review_budget, 0):]:
+            item['required'] = False
+            item['deferred'] = True
     return sorted(result, key=lambda item: (not item['due'], item['next_check_at'] or item['as_of'], item['tracking_key']))
 
 
