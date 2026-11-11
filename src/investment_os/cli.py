@@ -363,7 +363,24 @@ def main(argv: list[str] | None = None) -> int:
     source_plan.add_argument("--request", type=Path, required=True, help="Reader source-request YAML path.")
     source_plan.add_argument("--out", type=Path, required=True, help="Output capture-plan JSON path.")
 
+    radar = subparsers.add_parser(
+        "radar",
+        help="Agent-researched daily radar: preflight, packet validation, run store, collection report.",
+    )
+    radar.add_argument("radar_command", choices=("preflight", "evaluate", "store", "collection-report"))
+    radar.add_argument("radar_args", nargs=argparse.REMAINDER, help="Arguments for the chosen radar command.")
+
     args = parser.parse_args(argv)
+    if args.command == "radar":
+        from . import radar_collection, radar_store, upstream_radar, upstream_radar_preflight
+
+        commands = {
+            "preflight": upstream_radar_preflight.main,
+            "evaluate": upstream_radar.main,
+            "store": radar_store.main,
+            "collection-report": radar_collection.main,
+        }
+        return commands[args.radar_command](args.radar_args)
     if args.command == "doctor":
         return run_doctor(args.probe)
     if args.command == "demo":
