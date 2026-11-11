@@ -15,6 +15,7 @@ from typing import Mapping, Sequence
 from .cxo_intelligence import build_cxo_brief_items, load_profile, render_cxo_brief, scan_cxo_brief_quality
 from .hard_source_collectors import (
     HardSourceCandidate,
+    _load_watchlist,
     collect_hard_source_candidates,
     get_last_source_errors,
 )
@@ -103,6 +104,11 @@ def _validate_inputs(watchlist_path: Path, profile_path: Path) -> None:
     for label, path in (("watchlist", watchlist_path), ("profile", profile_path)):
         if not path.is_file():
             raise DailyRunError(f"{label} file not found: {path}")
+    if not any(_load_watchlist(watchlist_path).values()):
+        raise DailyRunError(
+            f"watchlist has no symbols under `groups:`: {watchlist_path} "
+            "(daily reads groups, see configs/watchlist.sample.yaml; a top-level `symbols:` list is read only by `run`)"
+        )
 
 
 def _candidate_from_row(row: Mapping[str, object]) -> SourceCandidate:

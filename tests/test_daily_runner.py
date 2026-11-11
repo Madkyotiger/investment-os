@@ -589,3 +589,13 @@ def test_recovery_validates_every_published_artifact_before_committing_state(mon
 
     assert not state_path.exists()
     assert (tmp_path / ".topic-state.json.pending.json").exists()
+
+
+def test_watchlist_without_groups_is_rejected_before_any_collection(tmp_path: Path):
+    flat = tmp_path / "flat.yaml"
+    flat.write_text("symbols:\n  - SPY\n  - NVDA\n", encoding="utf-8")
+
+    with pytest.raises(DailyRunError, match="no symbols under `groups:`"):
+        run_daily(flat, PROFILE, tmp_path / "state.json", tmp_path / "out")
+    assert not (tmp_path / "out").exists()
+

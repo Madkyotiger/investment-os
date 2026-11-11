@@ -231,7 +231,6 @@ def _latest_sec_business_filing_for_cik(cik: str) -> dict[str, str] | None:
 def collect_sec_recent_filing_candidates(
     watchlist_groups: dict[str, list[str]],
     generated_at: datetime,
-    max_symbols: int = 8,
     symbol_metadata: dict[str, dict[str, object]] | None = None,
     sec_map: dict | None = None,
 ) -> list[HardSourceCandidate]:
@@ -253,7 +252,20 @@ def collect_sec_recent_filing_candidates(
         sec_map = _safe_sec_recent()
     cik_by_ticker = {str(row.get("ticker", "")).upper(): str(row.get("cik_str", "")) for row in sec_map.values()}
     candidates: list[HardSourceCandidate] = []
-    for ticker in symbols[:max_symbols]:
+    unmatched = [ticker for ticker in symbols if not cik_by_ticker.get(ticker)] if cik_by_ticker else []
+    if unmatched:
+        _LAST_SOURCE_ERRORS.append(
+            {
+                "source": "SEC company_tickers.json",
+                "lane": "company_events",
+                "code": "not_checked",
+                "message": f"No SEC CIK for {len(unmatched)} symbol(s), filings not checked: {', '.join(unmatched)}",
+                "source_url": "https://www.sec.gov/files/company_tickers.json",
+                "affected_count": len(unmatched),
+                "transient": False,
+            }
+        )
+    for ticker in symbols:
         cik = cik_by_ticker.get(ticker.upper(), "")
         latest = _latest_sec_filing_for_cik(cik)
         if not latest or latest["form"] not in RELEVANT_SEC_FORMS:

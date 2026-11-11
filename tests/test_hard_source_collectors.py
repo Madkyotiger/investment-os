@@ -552,3 +552,22 @@ def test_yfinance_snapshot_ignores_a_bar_whose_session_is_still_open(monkeypatch
     assert snapshot["close"] == closes[-2]
     assert snapshot["daily_vol_pct"] is not None and snapshot["daily_vol_pct"] > 0
 
+
+def test_sec_checks_every_listed_symbol_and_names_the_ones_it_cannot_resolve(monkeypatch):
+    import investment_os.hard_source_collectors as collectors
+
+    tickers = [f"AA{chr(65 + index)}" for index in range(12)]
+    sec_map = {str(index): {"ticker": ticker, "cik_str": 1000 + index} for index, ticker in enumerate(tickers)}
+    asked: list[str] = []
+    monkeypatch.setattr(collectors, "_latest_sec_filing_for_cik", lambda cik: asked.append(cik))
+    collectors._LAST_SOURCE_ERRORS.clear()
+
+    collect_sec_recent_filing_candidates(
+        {"core": tickers + ["ZZZZ"]}, datetime(2026, 7, 8, tzinfo=timezone.utc), sec_map=sec_map
+    )
+
+    assert [cik for cik in asked if cik] == [str(1000 + index) for index in range(12)]
+    gap = get_last_source_errors()[-1]
+    assert gap["code"] == "not_checked"
+    assert gap["message"].endswith("filings not checked: ZZZZ")
+
