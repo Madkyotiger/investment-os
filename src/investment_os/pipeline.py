@@ -12,6 +12,8 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from .macro_sources import load_market_stale_after_days
+
 try:
     import yfinance as yf
 except Exception:  # pragma: no cover
@@ -254,7 +256,7 @@ def analyze_history(cfg: SymbolConfig, hist: pd.DataFrame, generated_at: datetim
     if len(close) < 60:
         quality = "insufficient"
         gaps = "Less than 60 observations; trend and risk metrics are weak."
-    elif age_days > 7:
+    elif age_days > load_market_stale_after_days():
         quality = "stale"
         gaps = f"Latest price date is {age_days} calendar days old; verify source freshness."
     else:
@@ -347,7 +349,6 @@ def render_report(config: dict[str, Any], metrics: list[SymbolMetrics], generate
         lines.append("")
     lines.append("## 4. Next Data Work")
     lines.append("")
-    lines.append("- 接入 AKShare/Tushare，用于 A股/中国宏观/行业字段校验。")
     lines.append("- 接入 holdings.csv，把单标的观察升级为组合风险观察。")
     lines.append("- 对重点标的追加财务、新闻、公告和估值数据。")
     lines.append("- 每份外发报告先做隐私和决策边界检查。")

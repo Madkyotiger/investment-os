@@ -299,18 +299,19 @@ def test_sec_symbols_do_not_depend_on_hardcoded_group_names(monkeypatch):
         lambda: {"0": {"ticker": "ACME", "cik_str": "1234", "title": "Acme"}},
     )
     monkeypatch.setattr(
-        "investment_os.hard_source_collectors._latest_sec_filing_for_cik",
-        lambda _cik: {
+        "investment_os.hard_source_collectors._recent_sec_filings_for_cik",
+        lambda _cik: [{
             "form": "10-Q",
             "filing_date": "2026-07-07",
             "accession": "0001-02-03",
             "primary_doc": "acme.htm",
-        },
+        }],
     )
     monkeypatch.setattr(
         "investment_os.hard_source_collectors._http_text",
         lambda _url, timeout=10: "<html><body>synthetic filing body</body></html>",
     )
+    monkeypatch.setattr("investment_os.hard_source_collectors._sec_company_facts", lambda _cik: None)
 
     candidates = collect_sec_recent_filing_candidates(
         {"custom_research": ["ACME", "HKCO"]},
@@ -333,13 +334,13 @@ def test_sec_collector_filters_irrelevant_forms(monkeypatch):
         lambda: {"0": {"ticker": "ACME", "cik_str": "1234", "title": "Acme"}},
     )
     monkeypatch.setattr(
-        "investment_os.hard_source_collectors._latest_sec_filing_for_cik",
-        lambda _cik: {
+        "investment_os.hard_source_collectors._recent_sec_filings_for_cik",
+        lambda _cik: [{
             "form": "S-1",
             "filing_date": "2026-07-07",
             "accession": "0001-02-03",
             "primary_doc": "acme.htm",
-        },
+        }],
     )
 
     assert collect_sec_recent_filing_candidates(
@@ -353,13 +354,13 @@ def test_sec_body_retrieval_retains_accession_url_and_hash_without_claiming_read
         lambda: {"0": {"ticker": "ACME", "cik_str": "1234", "title": "Acme"}},
     )
     monkeypatch.setattr(
-        "investment_os.hard_source_collectors._latest_sec_filing_for_cik",
-        lambda _cik: {
+        "investment_os.hard_source_collectors._recent_sec_filings_for_cik",
+        lambda _cik: [{
             "form": "8-K",
             "filing_date": "2026-07-07",
             "accession": "0001-02-03",
             "primary_doc": "acme.htm",
-        },
+        }],
     )
     monkeypatch.setattr(
         "investment_os.hard_source_collectors._http_text",
@@ -390,13 +391,13 @@ def test_old_sec_metadata_and_body_are_stale_and_nonpromotable(monkeypatch):
         lambda: {"0": {"ticker": "ACME", "cik_str": "1234", "title": "Acme"}},
     )
     monkeypatch.setattr(
-        "investment_os.hard_source_collectors._latest_sec_filing_for_cik",
-        lambda _cik: {
+        "investment_os.hard_source_collectors._recent_sec_filings_for_cik",
+        lambda _cik: [{
             "form": "10-Q",
             "filing_date": "2026-06-01",
             "accession": "0001-02-03",
             "primary_doc": "acme.htm",
-        },
+        }],
     )
     monkeypatch.setattr(
         "investment_os.hard_source_collectors._http_text",
@@ -483,7 +484,13 @@ def test_sec_form4_metadata_does_not_block_newer_business_filing_body(monkeypatc
         }
     }
     requested_urls = []
-    monkeypatch.setattr("investment_os.hard_source_collectors._http_json", lambda _url, timeout=10: submissions)
+    submission_requests = []
+
+    def fake_json(url: str, timeout=10):
+        submission_requests.append(url)
+        return submissions
+
+    monkeypatch.setattr("investment_os.hard_source_collectors._http_json", fake_json)
 
     def fake_text(url: str, timeout=10):
         requested_urls.append(url)
@@ -501,6 +508,7 @@ def test_sec_form4_metadata_does_not_block_newer_business_filing_body(monkeypatc
     assert body.accession_number == "0001-08-01"
     assert requested_urls and requested_urls[0].endswith("/event.htm")
     assert "form4.xml" not in json.dumps(body.to_row())
+    assert len(submission_requests) == 1  # the company's filing list is fetched once, not once per lookup
 
 
 def test_market_move_is_judged_against_each_symbols_own_volatility(monkeypatch):
@@ -573,4 +581,110 @@ def test_sec_checks_every_listed_symbol_and_names_the_ones_it_cannot_resolve(mon
     gap = get_last_source_errors()[-1]
     assert gap["code"] == "not_checked"
     assert gap["message"].endswith("filings not checked: ZZZZ")
+
+
+def _sec_fixture(monkeypatch, filing: dict[str, str], body: str, facts: dict | None = None) -> None:
+    monkeypatch.setattr(
+        "investment_os.hard_source_collectors._safe_sec_recent",
+        lambda: {"0": {"ticker": "ACME", "cik_str": "1234", "title": "Acme"}},
+    )
+    monkeypatch.setattr("investment_os.hard_source_collectors._recent_sec_filings_for_cik", lambda _cik: [filing])
+    monkeypatch.setattr("investment_os.hard_source_collectors._http_text", lambda _url, timeout=10: body)
+    monkeypatch.setattr("investment_os.hard_source_collectors._sec_company_facts", lambda _cik: facts)
+
+
+def test_8k_event_items_are_read_from_the_body_and_become_reportable(monkeypatch):
+    filing = {"form": "8-K", "filing_date": "2026-07-07", "accession": "0001-08-01", "primary_doc": "event.htm", "items": "2.02,9.01"}
+    body = (
+        "<html><body><p>Item 2.02 Results of Operations and Financial Condition.</p><p>On July 7 the company issued a press release.</p>"
+        "<p>Item 9.01 Financial Statements and Exhibits.</p><p>Item 2.02 is furnished, not filed.</p></body></html>"
+    )
+    _sec_fixture(monkeypatch, filing, body)
+
+    candidates = collect_sec_recent_filing_candidates({"research": ["ACME"]}, datetime(2026, 7, 8, tzinfo=timezone.utc))
+
+    read = next(candidate for candidate in candidates if candidate.evidence_status == "primary_body_read")
+    assert read.title == "ACME 8-K 披露：经营业绩与财务状况"
+    assert read.summary == "ACME 于 2026-07-07 提交的 8-K，正文申报了经营业绩与财务状况（第 2.02 项）、财务报表与附件（第 9.01 项）。"
+    assert read.thesis_impact == "unknown_narrowed" and read.body_read_status == "read"
+    assert is_promotable(read.to_row())
+    # The retrieval receipt is still there and still cannot be promoted.
+    assert any(candidate.evidence_status == "primary_body_retrieved" for candidate in candidates)
+
+
+def test_procedural_8k_is_read_but_not_treated_as_a_business_event(monkeypatch):
+    filing = {"form": "8-K", "filing_date": "2026-07-07", "accession": "0001-08-02", "primary_doc": "vote.htm", "items": "5.07"}
+    _sec_fixture(monkeypatch, filing, "<html><body><p>Item 5.07 Submission of Matters to a Vote of Security Holders.</p></body></html>")
+
+    candidates = collect_sec_recent_filing_candidates({"research": ["ACME"]}, datetime(2026, 7, 8, tzinfo=timezone.utc))
+
+    read = next(candidate for candidate in candidates if candidate.evidence_status == "primary_body_read")
+    assert read.title == "ACME 8-K 披露：股东投票结果" and read.thesis_impact == "unknown"
+
+
+def test_8k_without_item_headings_stays_a_retrieval_receipt(monkeypatch):
+    filing = {"form": "8-K", "filing_date": "2026-07-07", "accession": "0001-08-03", "primary_doc": "x.htm", "items": "2.02"}
+    _sec_fixture(monkeypatch, filing, "<html><body>cover page only</body></html>")
+
+    candidates = collect_sec_recent_filing_candidates({"research": ["ACME"]}, datetime(2026, 7, 8, tzinfo=timezone.utc))
+
+    assert [candidate.evidence_status for candidate in candidates] == ["primary_metadata_only", "primary_body_retrieved"]
+
+
+def _fact(start: str, end: str, value: float, accession: str = "0001-10-01") -> dict:
+    return {"start": start, "end": end, "val": value, "accn": accession, "form": "10-Q"}
+
+
+def test_10q_reports_the_filings_own_revenue_income_and_eps(monkeypatch):
+    filing = {"form": "10-Q", "filing_date": "2026-07-07", "accession": "0001-10-01", "primary_doc": "q.htm", "items": ""}
+    facts = {"facts": {"us-gaap": {
+        "Revenues": {"units": {"USD": [
+            _fact("2026-04-01", "2026-06-30", 562_000_000),
+            _fact("2025-04-01", "2025-06-30", 430_000_000),
+            _fact("2026-01-01", "2026-06-30", 1_080_000_000),  # six-month figure in the same filing: not the quarter
+            _fact("2026-04-01", "2026-06-30", 999_000_000, accession="0009-99-99"),  # another filing
+        ]}},
+        "NetIncomeLoss": {"units": {"USD": [_fact("2026-04-01", "2026-06-30", -12_500_000), _fact("2025-04-01", "2025-06-30", 3_000_000)]}},
+        "EarningsPerShareDiluted": {"units": {"USD/shares": [_fact("2026-04-01", "2026-06-30", -0.04), _fact("2025-04-01", "2025-06-30", 0.01)]}},
+    }}}
+    _sec_fixture(monkeypatch, filing, "<html><body>quarterly report</body></html>", facts)
+
+    candidates = collect_sec_recent_filing_candidates({"research": ["ACME"]}, datetime(2026, 7, 8, tzinfo=timezone.utc))
+
+    read = next(candidate for candidate in candidates if candidate.evidence_status == "primary_body_read")
+    assert read.title == "ACME 10-Q 披露营收 5.62 亿美元"
+    assert read.summary == (
+        "ACME 于 2026-07-07 提交的 10-Q（报告期截至 2026-06-30），按文件自带的结构化数据："
+        "营收 5.62 亿美元，同比增长 30.7%；归属于母公司的净亏损 1,250 万美元（上年同期净利润 300 万美元）；"
+        "每股摊薄收益 -0.04 美元（上年同期 0.01 美元）。"
+    )
+    assert is_promotable(read.to_row())
+
+
+def test_10q_without_matching_facts_stays_a_retrieval_receipt(monkeypatch):
+    filing = {"form": "10-Q", "filing_date": "2026-07-07", "accession": "0001-10-01", "primary_doc": "q.htm", "items": ""}
+    facts = {"facts": {"us-gaap": {"Revenues": {"units": {"USD": [_fact("2026-04-01", "2026-06-30", 1.0, accession="0009-99-99")]}}}}}
+    _sec_fixture(monkeypatch, filing, "<html><body>quarterly report</body></html>", facts)
+
+    candidates = collect_sec_recent_filing_candidates({"research": ["ACME"]}, datetime(2026, 7, 8, tzinfo=timezone.utc))
+
+    assert "primary_body_read" not in {candidate.evidence_status for candidate in candidates}
+
+
+def test_periodic_report_filed_with_an_8k_supplies_the_figures(monkeypatch):
+    eight_k = {"form": "8-K", "filing_date": "2026-07-07", "accession": "0001-08-01", "primary_doc": "event.htm", "items": "2.02,9.01"}
+    ten_q = {"form": "10-Q", "filing_date": "2026-07-07", "accession": "0001-10-01", "primary_doc": "q.htm", "items": ""}
+    facts = {"facts": {"us-gaap": {"Revenues": {"units": {"USD": [_fact("2026-04-01", "2026-06-30", 562_000_000)]}}}}}
+    _sec_fixture(monkeypatch, eight_k, "<html><body><p>Item 2.02 Results of Operations.</p></body></html>", facts)
+    monkeypatch.setattr("investment_os.hard_source_collectors._recent_sec_filings_for_cik", lambda _cik: [eight_k, ten_q])
+    monkeypatch.setattr(
+        "investment_os.hard_source_collectors._SEC_FACTS_CLIENT",
+        type("Client", (), {"get_text": staticmethod(lambda url: "<html><body>quarterly report</body></html>")})(),
+    )
+
+    candidates = collect_sec_recent_filing_candidates({"research": ["ACME"]}, datetime(2026, 7, 8, tzinfo=timezone.utc))
+
+    read = [candidate for candidate in candidates if candidate.evidence_status == "primary_body_read"]
+    assert [candidate.title for candidate in read] == ["ACME 10-Q 披露营收 5.62 亿美元"]
+    assert read[0].source_url.endswith("/00011001/q.htm") and read[0].accession_number == "0001-10-01"
 

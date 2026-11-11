@@ -28,31 +28,31 @@ series:
   FEDFUNDS:
     label: Federal Funds Effective Rate
     cadence: monthly
-    stale_after_days: 45
+    stale_after_days: 75
     unit: percent
     material_change_threshold: 0.05
   CPIAUCSL:
     label: Consumer Price Index for All Urban Consumers
     cadence: monthly
-    stale_after_days: 45
+    stale_after_days: 75
     unit: index
     material_change_threshold: 0.1
   CPILFESL:
     label: Consumer Price Index Less Food and Energy
     cadence: monthly
-    stale_after_days: 45
+    stale_after_days: 75
     unit: index
     material_change_threshold: 0.1
   UNRATE:
     label: Unemployment Rate
     cadence: monthly
-    stale_after_days: 45
+    stale_after_days: 75
     unit: percent
     material_change_threshold: 0.1
   PAYEMS:
     label: All Employees Total Nonfarm Payrolls
     cadence: monthly
-    stale_after_days: 45
+    stale_after_days: 75
     unit: thousands
     material_change_threshold: 25
   PCEPI:

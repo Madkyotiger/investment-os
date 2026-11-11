@@ -15,6 +15,8 @@ import yaml
 
 from .evidence_contract import infer_body_read_status, normalize_evidence_status
 from .http_client import HttpClient, HttpRequestError
+from .radar_evidence import html_to_text
+from .sec_filing_reader import EIGHT_K_ITEMS, describe_periodic, format_usd, read_8k_items, read_periodic_facts
 from .macro_sources import (
     MacroObservation,
     collect_macro_observations,
@@ -26,6 +28,9 @@ from .macro_sources import (
 
 
 _HTTP_CLIENT = HttpClient()
+# A company's full XBRL fact file runs to several megabytes.
+_SEC_FACTS_CLIENT = HttpClient(timeout_seconds=30, max_response_bytes=60_000_000)
+_RECENT_FILINGS_CACHE: dict[str, list[dict[str, str]]] = {}
 _LAST_SOURCE_ERRORS: list[dict[str, object]] = []
 RELEVANT_SEC_FORMS = frozenset({"10-K", "10-Q", "8-K", "4"})
 BUSINESS_FILING_FORMS = frozenset({"10-K", "10-Q", "8-K"})
@@ -190,6 +195,8 @@ def collect_sec_watchlist_candidates(
 def _recent_sec_filings_for_cik(cik: str) -> list[dict[str, str]]:
     if not cik:
         return []
+    if cik in _RECENT_FILINGS_CACHE:  # one submissions request per company per collection
+        return _RECENT_FILINGS_CACHE[cik]
     padded = str(cik).zfill(10)
     try:
         data = _http_json(f"https://data.sec.gov/submissions/CIK{padded}.json")
@@ -201,6 +208,7 @@ def _recent_sec_filings_for_cik(cik: str) -> list[dict[str, str]]:
     dates = recent.get("filingDate", [])
     accessions = recent.get("accessionNumber", [])
     primary_docs = recent.get("primaryDocument", [])
+    item_lists = recent.get("items", [])
     filings: list[dict[str, str]] = []
     for index, form in enumerate(forms):
         if str(form) not in RELEVANT_SEC_FORMS:
@@ -211,9 +219,104 @@ def _recent_sec_filings_for_cik(cik: str) -> list[dict[str, str]]:
                 "filing_date": str(dates[index]) if index < len(dates) else "",
                 "accession": str(accessions[index]) if index < len(accessions) else "",
                 "primary_doc": str(primary_docs[index]) if index < len(primary_docs) else "",
+                "items": str(item_lists[index]) if index < len(item_lists) else "",
             }
         )
+    _RECENT_FILINGS_CACHE[cik] = filings
     return filings
+
+
+def _filed_within(filing: dict[str, str], generated_at: datetime, days: int) -> bool:
+    try:
+        age = (generated_at.date() - datetime.fromisoformat(filing["filing_date"][:10]).date()).days
+    except ValueError:
+        return False
+    return 0 <= age <= days
+
+
+def _sec_company_facts(cik: str) -> dict | None:
+    url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{str(cik).zfill(10)}.json"
+    try:
+        data = _SEC_FACTS_CLIENT.get_json(url)
+    except HttpRequestError as error:
+        _record_source_error(error)
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _sec_read_candidate(
+    ticker: str,
+    cik: str,
+    filing: dict[str, str],
+    body: str,
+    content_hash: str,
+    source_url: str,
+    themes: str,
+    generated_at: datetime,
+) -> HardSourceCandidate | None:
+    """What the filing itself states, when that can be read without interpretation; otherwise None."""
+    form, filed = filing["form"], filing["filing_date"]
+    if form == "8-K":
+        reading = read_8k_items(html_to_text(body))
+        if reading is None:
+            return None
+        material = reading.substantive
+        title = f"{ticker} 8-K 披露：{EIGHT_K_ITEMS[reading.lead_item][0]}"
+        summary = f"{ticker} 于 {filed} 提交的 8-K，正文申报了{reading.describe()}。"
+        question = f"这次披露的事项是否改变对 {ticker} 经营、风险或资本配置的判断"
+        counter = "申报事项只说明披露了哪一类事件，可能是例行披露；具体数字和条款还在附件里。"
+        next_source = "这份 8-K 的附件（新闻稿、协议文本）和随后的定期报告"
+        kill = "若附件显示只是例行或程序性披露"
+        cannot_prove = "事项类别不能说明事件对业绩或估值的影响方向。"
+    else:
+        facts = _sec_company_facts(cik)
+        periodic = read_periodic_facts(facts, filing["accession"], form) if facts else None
+        if periodic is None:
+            return None
+        material = True
+        title = f"{ticker} {form} 披露营收 {format_usd(periodic.revenue.current)}"
+        summary = (
+            f"{ticker} 于 {filed} 提交的 {form}（报告期截至 {periodic.period_end}），"
+            f"按文件自带的结构化数据：{describe_periodic(periodic)}。"
+        )
+        question = f"{ticker} 这一期营收和利润的变化来自需求、价格、成本还是一次性项目"
+        counter = "同比变化可能来自并购、汇率或一次性项目，不能单独说明经营趋势。"
+        next_source = "这份文件的管理层讨论与分析、分部数据和现金流量表"
+        kill = "若后续修订或重述改变了这些数字"
+        cannot_prove = "三个汇总数字不能说明增长质量、业绩指引或估值是否合理；公司新闻稿可能使用不同口径的利润。"
+    return HardSourceCandidate(
+        item_id=f"primary_sec:{ticker}:{filing['accession']}:read",
+        lane="company_events",
+        title=title,
+        summary=summary,
+        source="SEC primary filing",
+        source_type="primary_filing_body_read",
+        as_of_date=filed,
+        retrieved_at=generated_at.isoformat(),
+        tickers=ticker,
+        themes=themes,
+        source_url=source_url,
+        source_authority=5,
+        freshness=5,
+        evidence_change=4 if material else 2,
+        magnitude=3,
+        novelty=4 if material else 2,
+        decision_usefulness=4 if material else 2,
+        portfolio_relevance=5,
+        confidence="verified_body_read",
+        thesis_impact="unknown_narrowed" if material else "unknown",
+        counter_explanation=counter,
+        next_primary_source=next_source,
+        next_check=question,
+        kill_signal=kill,
+        cannot_prove=cannot_prove,
+        body_read_status="read",
+        content_hash=content_hash,
+        freshness_status="current",
+        freshness_threshold_days=3,
+        evidence_status="primary_body_read",
+        accession_number=filing["accession"],
+    )
 
 
 def _latest_sec_filing_for_cik(cik: str) -> dict[str, str] | None:
@@ -250,6 +353,7 @@ def collect_sec_recent_filing_candidates(
         )
     if sec_map is None:
         sec_map = _safe_sec_recent()
+    _RECENT_FILINGS_CACHE.clear()
     cik_by_ticker = {str(row.get("ticker", "")).upper(): str(row.get("cik_str", "")) for row in sec_map.values()}
     candidates: list[HardSourceCandidate] = []
     unmatched = [ticker for ticker in symbols if not cik_by_ticker.get(ticker)] if cik_by_ticker else []
@@ -374,6 +478,36 @@ def collect_sec_recent_filing_candidates(
                 accession_number=business_latest["accession"],
             )
         )
+        read = None
+        if body_freshness_status == "current":
+            read = _sec_read_candidate(
+                ticker, cik, business_latest, body, content_hash, source_url, ",".join(tags), generated_at
+            )
+        if business_latest["form"] == "8-K":
+            # Results day often brings an 8-K and the periodic report together; the report carries the figures.
+            periodic = next(
+                (
+                    filing for filing in _recent_sec_filings_for_cik(cik)
+                    if filing["form"] in {"10-Q", "10-K"} and _filed_within(filing, generated_at, 3)
+                ),
+                None,
+            )
+            if periodic and periodic["accession"] and periodic["primary_doc"]:
+                periodic_url = (
+                    f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/"
+                    f"{periodic['accession'].replace('-', '')}/{periodic['primary_doc']}"
+                )
+                try:
+                    periodic_body = _SEC_FACTS_CLIENT.get_text(periodic_url)
+                except HttpRequestError as error:
+                    _record_source_error(error)
+                else:
+                    periodic_hash = "sha256:" + hashlib.sha256(periodic_body.encode("utf-8")).hexdigest()
+                    read = _sec_read_candidate(
+                        ticker, cik, periodic, periodic_body, periodic_hash, periodic_url, ",".join(tags), generated_at
+                    ) or read
+        if read is not None:
+            candidates.append(read)
     return candidates
 
 

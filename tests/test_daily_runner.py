@@ -604,3 +604,15 @@ def test_watchlist_without_groups_is_rejected_before_any_collection(tmp_path: Pa
     with pytest.raises(DailyRunError, match="not a readable groups mapping"):
         run_daily(broken, PROFILE, tmp_path / "state.json", tmp_path / "out")
 
+
+def test_daily_uses_the_requested_profile_and_names_it_when_missing(tmp_path: Path):
+    with pytest.raises(DailyRunError, match="profiles.second_reader"):
+        _run(tmp_path, "missing", profile_id="second_reader")
+
+    profiles = tmp_path / "profiles.yaml"
+    profiles.write_text(
+        PROFILE.read_text(encoding="utf-8").replace("founder_operator:", "second_reader:", 1), encoding="utf-8"
+    )
+    result = run_daily(WATCHLIST, profiles, tmp_path / "state.json", tmp_path / "out", offline=True, profile_id="second_reader")
+
+    assert result.status == "completed"

@@ -459,13 +459,14 @@ def run_daily(
     *,
     strict: bool = False,
     offline: bool = False,
+    profile_id: str = "founder_operator",
 ) -> DailyRunResult:
     """Collect, validate, update durable topic state, and write one completed local run."""
     _validate_inputs(watchlist_path, profile_path)
     try:
-        profile = load_profile(profile_path)
+        profile = load_profile(profile_path, profile_id)
     except KeyError as error:
-        raise DailyRunError(f"profile file must define profiles.founder_operator: {profile_path}") from error
+        raise DailyRunError(f"profile file must define profiles.{profile_id}: {profile_path}") from error
     state_path.parent.mkdir(parents=True, exist_ok=True)
     _recover_pending_state(state_path)
     out_dir.parent.mkdir(parents=True, exist_ok=True)

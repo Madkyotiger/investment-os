@@ -11,13 +11,18 @@ from typing import Any
 DEFAULT_CACHE_DIR = Path(".cache/investment_os")
 
 
+def _setting(name: str) -> str:
+    # INVEST_ADVISOR_* is the name from before the project was renamed; it keeps working.
+    return os.getenv(f"INVESTMENT_OS_{name}") or os.getenv(f"INVEST_ADVISOR_{name}") or ""
+
+
 def cache_root() -> Path:
-    configured = os.getenv("INVEST_ADVISOR_CACHE_DIR")
+    configured = _setting("CACHE_DIR")
     return Path(configured) if configured else DEFAULT_CACHE_DIR
 
 
 def cache_enabled() -> bool:
-    return os.getenv("INVEST_ADVISOR_DISABLE_CACHE", "").lower() not in {"1", "true", "yes"}
+    return _setting("DISABLE_CACHE").lower() not in {"1", "true", "yes"}
 
 
 def cache_key(*parts: object) -> str:

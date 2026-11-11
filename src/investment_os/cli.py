@@ -218,7 +218,7 @@ def run_doctor(probe_target: str | None = None) -> int:
         }
         for name, used_by in OPTIONAL_PACKAGE_USAGE.items()
     }
-    supported = (3, 11) <= sys.version_info[:2] < (3, 13)
+    supported = (3, 11) <= sys.version_info[:2] < (3, 14)
     sec_configured = bool(os.getenv("SEC_EDGAR_IDENTITY", "").strip())
     connectors = {
         "yfinance": {
@@ -293,7 +293,9 @@ def run_doctor(probe_target: str | None = None) -> int:
         "china_keyless_readiness": china_keyless_readiness,
     }
     print(json.dumps(result, indent=2, sort_keys=True))
-    return 0 if supported and all(core.values()) else 1
+    # A live probe was asked for: a degraded answer must fail the command so a script can stop on it.
+    probed = {"daily": daily_readiness, "china-keyless": china_keyless_readiness}.get(probe_target or "")
+    return 0 if supported and all(core.values()) and probed != "degraded" else 1
 
 
 def run_live(config: Path, out_dir: Path, strict: bool) -> int:
@@ -336,6 +338,7 @@ def main(argv: list[str] | None = None) -> int:
     daily = subparsers.add_parser("daily", help="Collect, validate, update state, and write a local daily brief.")
     daily.add_argument("--config", type=Path, required=True, help="Watchlist YAML path.")
     daily.add_argument("--profile", type=Path, required=True, help="Reader profile YAML path.")
+    daily.add_argument("--profile-id", default="founder_operator", help="Which profile in that file to use.")
     daily.add_argument("--state", type=Path, required=True, help="Durable topic-state JSON path.")
     daily.add_argument("--out", type=Path, required=True)
     daily.add_argument("--strict", action="store_true", help="In live mode, fail if every usable source fails.")
@@ -397,6 +400,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.out,
                 strict=args.strict,
                 offline=args.offline,
+                profile_id=args.profile_id,
             )
         except DailyRunError as error:
             print(f"daily_run=fail reason={error}", file=sys.stderr)
