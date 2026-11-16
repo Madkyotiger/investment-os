@@ -230,6 +230,34 @@ def test_large_raw_responses_are_hashed_but_not_stored(tmp_path: Path, monkeypat
     assert sorted(path.name for path in (tmp_path / "hard-evidence").iterdir()) == ["digest.md", "enso.txt", "hard-sources.json"]
 
 
+def test_a_company_in_its_offering_is_found_by_name_and_its_newest_prospectus_is_read(tmp_path: Path, monkeypatch):
+    folder = "https://www.sec.gov/Archives/edgar/data/2130357"
+    monkeypatch.setitem(RESPONSES, "https://www.sec.gov/files/company_tickers.json", ("application/json", json.dumps({
+        "0": {"cik_str": 2130357, "ticker": "ANT", "title": "Anthropic, PBC"},
+        "1": {"cik_str": 1, "ticker": "ACMA", "title": "Acme Mining Corp"},
+        "2": {"cik_str": 2, "ticker": "ACMF", "title": "Acme Foods Inc"},
+    })))
+    monkeypatch.setitem(RESPONSES, "https://data.sec.gov/submissions/CIK0002130357.json", ("application/json", json.dumps({"filings": {"recent": {
+        # Filed 2026-11-03, outside the 4-day window; the older S-1 is superseded by the amendment.
+        "form": ["FWP", "S-1/A", "S-1", "DRS"], "filingDate": ["2026-11-10", "2026-11-03", "2026-10-26", "2026-06-01"],
+        "accessionNumber": ["0002130357-26-000009", "0002130357-26-000008", "0002130357-26-000005", "0002130357-26-000001"],
+        "primaryDocument": ["fwp.htm", "sx1ax2.htm", "sx1.htm", "filename1.htm"],
+        "acceptanceDateTime": ["", "2026-11-03T21:05:00.000Z", "", ""], "items": ["", "", "", ""], "reportDate": ["", "", "", ""],
+    }}})))
+    monkeypatch.setitem(RESPONSES, f"{folder}/000213035726000008/sx1ax2.htm", (
+        "text/html", "<html><title>S-1/A</title><body><p>the initial public offering price per share will be between $70.00 and $78.00</p></body></html>"))
+
+    result = collect(tmp_path, {"sec": {"forms": ["8-K", "S-1", "S-1/A"], "lookback_days": 4}}, NOW,
+                     sec_tickers=["anthropic", "Acme"], client=_client())
+
+    assert [row["source_id"] for row in result.sources] == ["sec-ant-s1a-20261103"]
+    assert "between $70.00 and $78.00" in (tmp_path / result.sources[0]["body_path"]).read_text(encoding="utf-8")
+    assert result.not_captured[0]["source_id"] == "sec-acme"
+    assert "Acme Mining Corp (ACMA), Acme Foods Inc (ACMF)" in result.not_captured[0]["error"]
+    digest = (tmp_path / "hard-evidence" / "digest.md").read_text(encoding="utf-8")
+    assert "ANT Anthropic, PBC: S-1/A filed 2026-11-03, newest offering document" in digest
+
+
 def test_a_second_call_in_the_same_run_adds_to_the_first(tmp_path: Path):
     collect(tmp_path, {"fred": CONFIG["fred"], "pages": [{"id": "blocked", "url": "https://example.gov/blocked", "title_contains": "x"}]}, NOW, client=_client())
     first_sha = json.loads((tmp_path / "hard-evidence" / "hard-sources.json").read_text(encoding="utf-8"))["sources"][0]["sha256"]

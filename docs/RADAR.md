@@ -52,7 +52,7 @@ uv run investment-os radar store readback --db reports/upstream-radar/radar-inde
 | Shanghai Futures Exchange | Settlement, change, volume and open interest of the most-traded contract per metal, for the last finished trading day |
 | Listed pages | An official page such as the NOAA ENSO discussion or a US Bureau of Labor Statistics news release (CPI, employment, PPI, productivity, job openings, employment costs), checked against its expected title or a marker in its body |
 | USDA reports | The latest issue of a report from the department's publication library, such as WASDE. The saved text file holds the tables; the written summary exists only in the PDF, which is linked but not read |
-| SEC EDGAR | For each ticker passed with `--sec` (or an SEC CIK number): filings in the lookback window, and for 8-K and 6-K the attached documents, which carry the earnings release |
+| SEC EDGAR | For each company passed with `--sec` (ticker, company name as the SEC lists it, or SEC CIK number): filings in the lookback window, and for 8-K and 6-K the attached documents, which carry the earnings release. For a company in its IPO, the newest offering document of the last 120 days (final prospectus 424B4/424B1, or the S-1/F-1 and amendments) |
 
 Rules:
 
@@ -61,6 +61,8 @@ Rules:
 - A source that could not be fetched is listed under "Not captured". Record it as a gap; it does not mean nothing happened.
 - An exchange file published before settlement is not a finished day and is skipped.
 - A later call in the same run adds to the first: when the research finds that a company reported, `radar collect --run-dir RUN --sec TICKER` (no `--config` needed) adds its filings to the same manifest and digest.
+- A company about to list may have a reserved ticker the news rarely prints. Pass its name (`--sec Anthropic`); a name that fits several companies is listed under "Not captured" with the candidates, so the run can pass the ticker instead. A company with no ticker at all is given by its CIK number.
+- An offering document restates the whole offering, so only the newest one is captured, even when it was filed before the lookback window. After pricing, the final prospectus (424B4) replaces the registration statement.
 - `--strict` exits `1` when anything requested was missing or mismatched.
 - SEC and BLS requests need `SEC_EDGAR_IDENTITY` (a name and contact email). Both agencies turn away automated requests that do not name a contact, and the same value is sent to both as the User-Agent. Without it those sources are listed under "Not captured" with that reason.
 

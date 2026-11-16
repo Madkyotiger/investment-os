@@ -40,6 +40,13 @@ _CELL_TAGS = {"td", "th"}
 ATTACHMENT_FORMS = frozenset({"8-K", "6-K"})
 RAW_KEEP_BYTES = 262_144  # larger raw responses are hashed, not stored; the URL stays in the manifest
 DEFAULT_SEC_FORMS = ("8-K", "10-Q", "10-K", "6-K", "20-F", "S-1", "S-1/A")
+# Offering documents of an IPO: the final prospectus (424B4/424B1) and the registration
+# statement with its amendments. Each one restates the whole offering, so only the newest
+# is captured, and it is looked for over a longer window than the daily lookback: a
+# company in the middle of its offering may not file a new amendment for weeks.
+OFFERING_FORMS = frozenset({"424B4", "424B1", "S-1", "S-1/A", "F-1", "F-1/A"})
+OFFERING_LOOKBACK_DAYS = 120
+_NAME_SUFFIXES = {"inc", "incorporated", "corp", "corporation", "co", "company", "ltd", "limited", "plc", "pbc", "llc", "lp", "nv", "sa", "ag", "se", "holdings", "group", "the"}
 
 
 @dataclass
@@ -319,6 +326,33 @@ def capture_shfe_daily(client: HttpClient, products: dict[str, str], today: date
     raise HttpRequestError("no_data", f"no SHFE daily file in the last {max_back_days} days", "https://www.shfe.com.cn/")
 
 
+def _name_key(name: str) -> str:
+    words = re.findall(r"[a-z0-9]+", name.lower().replace("&", " and "))
+    return " ".join(word for word in words if word not in _NAME_SUFFIXES)
+
+
+def _resolve_sec_company(
+    token: str, by_ticker: dict[str, dict[str, Any]], directory: list[dict[str, Any]],
+) -> tuple[dict[str, Any] | None, str]:
+    """A ticker, an SEC CIK number, or a company name (as the SEC lists it)."""
+    if token.isdigit():
+        return {"cik_str": int(token), "title": f"CIK {int(token)}"}, ""
+    if token.upper() in by_ticker:
+        return by_ticker[token.upper()], ""
+    key = _name_key(token)
+    if not key:
+        return None, "ticker not in the SEC company list"
+    exact = {int(row["cik_str"]): row for row in directory if _name_key(str(row.get("title", ""))) == key}
+    starts = {int(row["cik_str"]): row for row in directory if _name_key(str(row.get("title", ""))).startswith(key + " ")}
+    matches = exact or starts
+    if len(matches) == 1:
+        return next(iter(matches.values())), ""
+    if not matches:
+        return None, "not in the SEC company list by ticker or name; a company without a listed ticker can be given by its SEC CIK number"
+    names = ", ".join(f"{row.get('title')} ({row.get('ticker')})" for row in list(matches.values())[:5])
+    return None, f"name matches several companies, pass the ticker: {names}"
+
+
 def capture_sec_filings(
     client: HttpClient, tickers: list[str], forms: list[str], today: date, lookback_days: int, max_attachments: int = 3,
 ) -> tuple[list[Capture], list[dict[str, str]]]:
@@ -328,14 +362,19 @@ def capture_sec_filings(
         directory = json.loads(_decode(_fetch(client, SEC_TICKERS_URL, ("application/json",))))
     except HttpRequestError as error:
         return [], [{"source_id": f"sec-{ticker.lower()}", "url": SEC_TICKERS_URL, "error": str(error)} for ticker in tickers]
-    by_ticker = {str(row.get("ticker", "")).upper(): row for row in directory.values() if isinstance(row, dict)}
+    rows = [row for row in directory.values() if isinstance(row, dict)]
+    by_ticker: dict[str, dict[str, Any]] = {}
+    for row in rows:  # the SEC list puts a company's main ticker first
+        by_ticker.setdefault(str(row.get("ticker", "")).upper(), row)
     since = (today - timedelta(days=lookback_days)).isoformat()
-    for ticker in tickers:
+    offering_since = (today - timedelta(days=OFFERING_LOOKBACK_DAYS)).isoformat()
+    for requested in tickers:
         # A company with no listed ticker yet (for example before its offering) is addressed by its SEC number.
-        entry = {"cik_str": int(ticker), "title": f"CIK {int(ticker)}"} if ticker.isdigit() else by_ticker.get(ticker.upper())
+        entry, problem = _resolve_sec_company(requested.strip(), by_ticker, rows)
         if not entry:
-            missing.append({"source_id": f"sec-{ticker.lower()}", "url": SEC_TICKERS_URL, "error": "ticker not in the SEC company list"})
+            missing.append({"source_id": f"sec-{_name_key(requested).replace(' ', '-') or requested.lower()}", "url": SEC_TICKERS_URL, "error": problem})
             continue
+        ticker = str(entry.get("ticker") or requested.strip())
         cik = int(entry["cik_str"])
         company = str(entry.get("title", ticker))
         submissions_url = f"https://data.sec.gov/submissions/CIK{cik:010d}.json"
@@ -345,9 +384,15 @@ def capture_sec_filings(
             missing.append({"source_id": f"sec-{ticker.lower()}", "url": submissions_url, "error": str(error)})
             continue
         found = 0
+        offering_seen = False
         for index, form in enumerate(recent.get("form", [])):
             filed = str(recent["filingDate"][index])
-            if form not in forms or filed < since:
+            if form in OFFERING_FORMS:
+                # Newest first: the first offering document in the window supersedes the older ones.
+                if offering_seen or filed < offering_since:
+                    continue
+                offering_seen = True
+            elif form not in forms or filed < since:
                 continue
             found += 1
             accession = str(recent["accessionNumber"][index])
@@ -380,6 +425,8 @@ def capture_sec_filings(
                     continue
                 markup = _decode(raw)
                 kind = "attached document" if suffix else "primary document"
+                if form in OFFERING_FORMS:
+                    kind = "newest offering document (prospectus or registration statement)"
                 detail = f"; 8-K items {items}" if items and not suffix else ""
                 captures.append(Capture(
                     source_id=base_id + suffix,
@@ -396,7 +443,7 @@ def capture_sec_filings(
         if not found:
             captures.append(Capture(
                 source_id=f"sec-{ticker.lower()}-none", url=submissions_url, title="", text="",
-                digest=[f"{ticker.upper()} {company}: no {'/'.join(forms)} filed since {since}"],
+                digest=[f"{ticker.upper()} {company}: no {'/'.join(form for form in forms if form not in OFFERING_FORMS)} filed since {since}, and no offering document since {offering_since}"],
             ))
     return captures, missing
 
@@ -538,7 +585,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Fetch first-hand official captures into a radar run directory.")
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument("--config", type=Path, help="Hard-source list, see configs/radar_hard_sources.sample.yaml. Omit to capture only --sec filings.")
-    parser.add_argument("--sec", default="", help="Comma-separated tickers (or SEC CIK numbers) whose recent filings to capture.")
+    parser.add_argument("--sec", default="", help="Comma-separated tickers, company names as the SEC lists them, or SEC CIK numbers, whose recent filings to capture.")
     parser.add_argument("--now", help="Timezone-aware capture time (default: current time).")
     parser.add_argument("--strict", action="store_true", help="Exit 1 when any requested source was not captured or mismatched.")
     args = parser.parse_args(argv)
