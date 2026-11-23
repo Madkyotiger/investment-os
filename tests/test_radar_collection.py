@@ -58,6 +58,18 @@ def test_collection_report_restates_runs_sources_and_gaps(tmp_path: Path):
     assert "| 2026-11-10/073000 | fail blocked | 0 | 3 (1) | 0 | 2 | 0 |" in render_markdown(report)
 
 
+def test_days_off_the_publishing_schedule_are_not_missing_issues(tmp_path: Path):
+    # 2026-11-20 is a Friday; 21 and 22 are the weekend; Monday 23 has no run.
+    _write_run(tmp_path, "2026-11-20", "073000")
+
+    report = build_collection_report(tmp_path, date(2026, 11, 20), date(2026, 11, 23), publish_weekdays={1, 2, 3, 4, 5})
+
+    assert report["days_without_a_passing_run"] == ["2026-11-23"]
+    assert report["unscheduled_days"] == ["2026-11-21", "2026-11-22"]
+    assert report["window"]["scheduled_days"] == 2
+    assert "scheduled days without a passing run: 2026-11-23; not scheduled: 2026-11-21, 2026-11-22" in render_markdown(report)
+
+
 def test_collection_report_is_reachable_from_the_cli(tmp_path: Path, capsys):
     _write_run(tmp_path / "runs", "2026-11-10", "073000")
     out = tmp_path / "report.md"
@@ -66,3 +78,7 @@ def test_collection_report_is_reachable_from_the_cli(tmp_path: Path, capsys):
 
     assert json.loads(capsys.readouterr().out)["runs"] == 1
     assert "## Gaps declared by the researcher" in out.read_text(encoding="utf-8")
+    # 2026-11-08 is a Sunday; with a weekday schedule only Monday counts.
+    args = ["radar", "collection-report", "--runs-root", str(tmp_path / "runs"), "--until", "2026-11-10", "--days", "3", "--out", str(out)]
+    assert main([*args, "--publish-weekdays", "1-5"]) == 0
+    assert json.loads(capsys.readouterr().out)["days_without_a_passing_run"] == 1

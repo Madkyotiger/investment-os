@@ -140,8 +140,11 @@ Three weeks of real daily runs, replayed with the package's own code:
 ```bash
 uv run investment-os radar collection-report \
   --runs-root reports/upstream-radar --days 7 \
-  --config configs/upstream_radar.sample.yaml --out reports/upstream-radar/collection-7d.md
+  --config configs/upstream_radar.sample.yaml --publish-weekdays 1-5 \
+  --out reports/upstream-radar/collection-7d.md
 ```
+
+`--publish-weekdays` names the ISO weekdays a brief is scheduled (Monday 1 to Sunday 7). Days off the schedule are listed as not scheduled instead of as days without a passing run; without the option every day counts.
 
 The report restates what the runs in the window recorded: status of each run, days without a passing run, each coverage check's results, every source host with usable and unusable counts, gaps recorded by the validator, gaps the researcher declared, and for open questions how many were reviewed, how many required ones were not, and how many were beyond the run's review budget. It adds no judgment.
 

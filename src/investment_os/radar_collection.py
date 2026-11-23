@@ -50,7 +50,10 @@ def build_collection_report(
     since: date,
     until: date,
     required_checks: list[str] | None = None,
+    publish_weekdays: set[int] | None = None,
 ) -> dict[str, Any]:
+    """``publish_weekdays`` holds ISO weekdays (Monday 1 .. Sunday 7) on which a brief is
+    scheduled. A day off the schedule without a run is not a missing issue; ``None`` means every day."""
     runs: list[dict[str, Any]] = []
     hosts: dict[str, Counter[str]] = {}
     unusable_sources: list[dict[str, str]] = []
@@ -123,12 +126,18 @@ def build_collection_report(
 
     days_with_pass = {row["run"][:10] for row in runs if row["status"] == "pass"}
     all_days = [since + timedelta(days=offset) for offset in range((until - since).days + 1)]
+    weekdays = set(publish_weekdays) if publish_weekdays else set(range(1, 8))
+    scheduled = [day for day in all_days if day.isoweekday() in weekdays]
     return {
         "schema_version": REPORT_SCHEMA,
-        "window": {"since": since.isoformat(), "until": until.isoformat(), "days": len(all_days)},
+        "window": {
+            "since": since.isoformat(), "until": until.isoformat(), "days": len(all_days),
+            "publish_weekdays": sorted(weekdays), "scheduled_days": len(scheduled),
+        },
         "runs": runs,
         "unreadable_runs": unreadable_runs,
-        "days_without_a_passing_run": [day.isoformat() for day in all_days if day.isoformat() not in days_with_pass],
+        "days_without_a_passing_run": [day.isoformat() for day in scheduled if day.isoformat() not in days_with_pass],
+        "unscheduled_days": [day.isoformat() for day in all_days if day.isoweekday() not in weekdays],
         "blocked_or_failed_runs": [row["run"] for row in runs if row["status"] != "pass"],
         "coverage": {check: dict(counter) for check, counter in sorted(coverage.items())},
         "source_hosts": [
@@ -151,7 +160,8 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"# Radar collection report {window['since']} to {window['until']}",
         "",
         f"- Runs with a packet: {len(runs)}; not passing: {len(report['blocked_or_failed_runs'])}; "
-        f"days without a passing run: {', '.join(report['days_without_a_passing_run']) or 'none'}",
+        f"scheduled days without a passing run: {', '.join(report['days_without_a_passing_run']) or 'none'}"
+        + (f"; not scheduled: {', '.join(report['unscheduled_days'])}" if report.get("unscheduled_days") else ""),
         f"- Evidence sources recorded: {sum(row['sources'] for row in runs)}; "
         f"usable: {sum(row['usable_sources'] for row in runs)}; unusable: {len(report['unusable_sources'])}",
         "",
@@ -189,6 +199,20 @@ def render_markdown(report: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _weekdays(text: str) -> set[int]:
+    days: set[int] = set()
+    for part in text.replace(" ", "").split(","):
+        first, _, last = part.partition("-")
+        try:
+            low, high = int(first), int(last or first)
+        except ValueError:
+            raise argparse.ArgumentTypeError(f"weekdays must be numbers 1-7, e.g. 1-5 or 1,3,5: {text!r}") from None
+        if not 1 <= low <= high <= 7:
+            raise argparse.ArgumentTypeError(f"weekdays must be numbers 1-7, e.g. 1-5 or 1,3,5: {text!r}")
+        days.update(range(low, high + 1))
+    return days
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Summarize what recent radar runs collected and where they fell short.")
     parser.add_argument("--runs-root", type=Path, required=True)
@@ -196,6 +220,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--until", type=date.fromisoformat, default=None, help="Last day of the window (default: today).")
     parser.add_argument("--config", type=Path, help="Radar config; its required checks are reported when a run omits them.")
     parser.add_argument("--out", type=Path, required=True, help="Output path; .md renders Markdown, anything else JSON.")
+    parser.add_argument("--publish-weekdays", type=_weekdays, default=None,
+                        help="ISO weekdays a brief is scheduled, e.g. 1-5 for Monday to Friday (default: every day).")
     args = parser.parse_args(argv)
     until = args.until or date.today()
     since = until - timedelta(days=max(args.days, 1) - 1)
@@ -204,7 +230,7 @@ def main(argv: list[str] | None = None) -> int:
         from .upstream_radar import load_objective
 
         required = [check for checks in load_objective(args.config).required_checks.values() for check in checks]
-    report = build_collection_report(args.runs_root, since, until, required)
+    report = build_collection_report(args.runs_root, since, until, required, args.publish_weekdays)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     if args.out.suffix == ".md":
         args.out.write_text(render_markdown(report), encoding="utf-8")
